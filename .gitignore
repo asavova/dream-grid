@@ -1,0 +1,39 @@
+# === Java build output ===
+/build/
+/out/
+
+# === IntelliJ IDEA ===
+.idea/
+*.iml
+
+# === Gradle ===
+.gradle/
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
+/local.properties
+
+# === Logs and data ===
+*.log
+*.db
+*.sqlite
+*.sqlite3
+*.pid
+/data/
+
+# === JARs and libraries ===
+*.jar
+libs/
+
+# === OS specific ===
+.DS_Store
+Thumbs.db
+
+# === VS Code (just in case) ===
+.vscode/
+
+# === Spotless / formatting tools ===
+spotless*.*
+
+# === Optional: ignore test results ===
+/test-results/
+/test-output/
