@@ -7,8 +7,19 @@ public abstract class AbstractDreamEntry implements IDreamEntry {
   protected String moodTag;
   protected long timestamp;
 
+  public Integer getId() {
+    return id;
+  }
+
+  public void setId(Integer id) {
+    this.id = id;
+  }
+
+  private Integer id;
+
   public AbstractDreamEntry(
-      String title, String content, String symbolTag, String moodTag, long timestamp) {
+      Integer id, String title, String content, String symbolTag, String moodTag, long timestamp) {
+    this.id = id;
     this.title = title;
     this.content = content;
     this.symbolTag = symbolTag;

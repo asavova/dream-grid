@@ -43,7 +43,10 @@ public class DreamDatabase {
     }
   }
 
-  public static Connection getConnection() {
+  public static Connection getConnection() throws SQLException {
+    if (connection == null || connection.isClosed()) {
+      connection = DriverManager.getConnection("jdbc:sqlite:dreams.db");
+    }
     return connection;
   }
 

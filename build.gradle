@@ -28,6 +28,14 @@ tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
 }
 
+task runFlameBot(type: Exec) {
+    description = 'Runs the FlameBot Python interpreter with test input.'
+    group = 'flamebot'
+
+    workingDir "$projectDir" // коренът на проекта
+    commandLine "$projectDir/flamebot-env/bin/python3", "flamebot_interpreter.py", "cat", "mirror", "fire"
+}
+
 spotless {
     java {
         googleJavaFormat('1.17.0')

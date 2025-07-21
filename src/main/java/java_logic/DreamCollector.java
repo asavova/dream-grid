@@ -3,6 +3,7 @@ package java_logic;
 
 import java.util.ArrayList;
 import java.util.List;
+import java_logic.model.DreamEntry;
 
 public class DreamCollector {
   private List<IDreamEntry> dreamEntries;
@@ -14,7 +15,7 @@ public class DreamCollector {
   // Добавяне на сън
   public void addDream(
       String title, String content, String symbolTag, String moodTag, long timestamp) {
-    DreamEntry entry = new DreamEntry(title, content, symbolTag, moodTag, timestamp);
+    DreamEntry entry = new DreamEntry(null, title, content, symbolTag, moodTag, timestamp);
     dreamEntries.add(entry);
   }
 
