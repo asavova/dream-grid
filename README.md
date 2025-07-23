@@ -1,4 +1,4 @@
-# 🔥 DreamGrid
+# DreamGrid
 
 DreamGrid is a creative hybrid project combining Java and Python to analyze dreams, store them, and turn them into symbolic experiences. It features:
 
