@@ -1,4 +1,4 @@
-package java_logic;
+package database;
 
 import java.nio.file.Files;
 import java.nio.file.Paths;
@@ -21,18 +21,21 @@ public class DreamDatabase {
       logger.info("Connected to database: " + DB_URL);
 
       try (Statement stmt = connection.createStatement()) {
-        String sql =
+        String createTableSQL =
             """
-                    CREATE TABLE IF NOT EXISTS dreams (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        title TEXT NOT NULL,
-                        content TEXT NOT NULL,
-                        symbol_tag TEXT,
-                        mood_tag TEXT,
-                        timestamp INTEGER
-                    );
-                """;
-        stmt.execute(sql);
+CREATE TABLE IF NOT EXISTS dreams (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    dream_date TEXT,
+    timestamp INTEGER,
+    symbol_tags TEXT,
+    dream_type TEXT,
+    analyzed INTEGER DEFAULT 0
+);
+""";
+
+        stmt.execute(createTableSQL);
         logger.info("Dreams table ensured.");
       }
 
@@ -45,7 +48,7 @@ public class DreamDatabase {
 
   public static Connection getConnection() throws SQLException {
     if (connection == null || connection.isClosed()) {
-      connection = DriverManager.getConnection("jdbc:sqlite:dreams.db");
+      connection = DriverManager.getConnection(DB_URL);
     }
     return connection;
   }

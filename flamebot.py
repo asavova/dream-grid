@@ -1,18 +1,19 @@
-# flamebot.py
+import os
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+import torch
 
 class FlameBot:
-    def __init__(self, model_name = "gpt-4o"):
-        self.model_name = model_name
+    token = os.getenv("HUGGINGFACE_TOKEN")
 
-    def generate_prompt(self, symbols):
-        symbol_list = ", ".join(symbols)
-        return f"Interpret a dream with these symbols: {symbol_list}. Use metaphor, poetic logic, and intuitive insight."
+    tokenizer = AutoTokenizer.from_pretrained("google/flan-t5-small", token=token)
+    model = AutoModelForSeq2SeqLM.from_pretrained("google/flan-t5-small", token=token)
 
-    def get_system_message(self):
-        return {
-            "role": "system",
-            "content": (
-                "You are FlameBot, an intuitive and poetic dream interpreter AI. "
-                "You use symbolic thinking and surreal metaphors. Your answers are lyrical, surprising, and emotionally intelligent."
-            )
-        }
+    def analyze(self, dream_text: str) -> str:
+        prompt = f"Interpret this dream symbolically and personally:\n{dream_text}"
+        inputs = self.tokenizer(prompt, add_special_tokens=False, return_tensors="pt", truncation=True)
+
+        with torch.no_grad():
+            outputs = self.model.generate(**inputs, max_length=256)
+
+        response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        return response
