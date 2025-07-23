@@ -18,8 +18,16 @@
 *.sqlite
 *.sqlite3
 *.pid
-/data/
-
+/data/dreams.db
+__pycache__/
+*.py[cod]
+.venv/
+.env
+.mypy_cache/
+.pytest_cache/
+.cache/
+.vscode/
+*.swp
 # === JARs and libraries ===
 *.jar
 libs/
@@ -28,8 +36,6 @@ libs/
 .DS_Store
 Thumbs.db
 
-# === VS Code (just in case) ===
-.vscode/
 
 # === Spotless / formatting tools ===
 spotless*.*
