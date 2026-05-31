@@ -41,16 +41,32 @@ public abstract class AbstractDream implements IDreamEntry {
     return title;
   }
 
+  public void setTitle(String title) {
+    this.title = title;
+  }
+
   public String getContent() {
     return content;
+  }
+
+  public void setContent(String content) {
+    this.content = content;
   }
 
   public long getTimestamp() {
     return timestamp;
   }
 
+  public void setTimestamp(long timestamp) {
+    this.timestamp = timestamp;
+  }
+
   public String getDreamDate() {
     return dreamDate;
+  }
+
+  public void setDreamDate(String dreamDate) {
+    this.dreamDate = dreamDate;
   }
 
   public boolean isAnalyzed() {

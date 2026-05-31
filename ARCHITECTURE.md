@@ -67,6 +67,12 @@ Search and filtering are coordinated by `DreamService`, but the SQL stays in `Dr
 - analysis status
 - combined filtering through `GET /dreams`
 
+Dream editing is also service-driven. `PUT /dreams/{id}` merges incoming fields with the current row, runs the same validation rules as create, and then applies lifecycle logic:
+
+- metadata-only edits keep the existing latest analysis snapshot
+- content edits mark analysis as `STALE`
+- stale edits remove only analysis-generated tag links and preserve manual tags
+
 ## Classification Flow
 
 Dream classification is stored separately from analysis status. `DreamClassification` provides the controlled classification values: `LUCID`, `NIGHTMARE`, `RECURRING`, `NEUTRAL`, and `UNKNOWN`.
@@ -101,6 +107,8 @@ User overrides do not delete inferred classification. Reanalysis can update infe
 
 `POST /dreams/{id}/reanalyze` skips the cache and always calls the Python service.
 
+`AnalysisStatus.STALE` means the stored analysis snapshot was generated for older content. Cached analysis is considered invalid until a new analyze/reanalyze call completes.
+
 ## Question Flow
 
 `POST /dreams/{id}/questions` requires a completed analysis. The Java service sends the dream text, stored analysis, and question to the Python service. The answer is returned but not persisted.
@@ -125,6 +133,8 @@ Every real analysis attempt is also stored in `analysis_runs`:
 - `failure_reason`
 
 The latest fields on `dreams` are kept for current API compatibility. The history table keeps completed and failed attempts so reanalysis behavior can be audited without overwriting prior runs.
+
+Delete behavior uses foreign keys and a transaction in the service layer. `DELETE /dreams/{id}` removes the dream row, cascades linked analysis runs and tag links, then prunes unlinked tag definitions.
 
 Classification state:
 

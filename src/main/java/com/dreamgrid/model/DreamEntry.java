@@ -68,4 +68,8 @@ public class DreamEntry extends AbstractDream {
   public void failAnalysis() {
     setAnalysisStatus(AnalysisStatus.FAILED);
   }
+
+  public void markAnalysisStale() {
+    setAnalysisStatus(AnalysisStatus.STALE);
+  }
 }

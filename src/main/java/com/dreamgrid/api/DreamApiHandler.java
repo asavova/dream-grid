@@ -10,6 +10,7 @@ import com.dreamgrid.dto.QuestionRequest;
 import com.dreamgrid.dto.QuestionResponse;
 import com.dreamgrid.dto.TagResponse;
 import com.dreamgrid.dto.UpdateDreamClassificationRequest;
+import com.dreamgrid.dto.UpdateDreamRequest;
 import com.dreamgrid.model.AnalysisRun;
 import com.dreamgrid.model.DreamClassification;
 import com.dreamgrid.model.DreamEntry;
@@ -59,6 +60,10 @@ public class DreamApiHandler implements HttpHandler {
         handleListDreams(exchange);
       } else if ("/dreams".equals(path) && "POST".equals(method)) {
         handleCreateDream(exchange);
+      } else if (path.matches("/dreams/\\d+$") && "PUT".equals(method)) {
+        handleUpdateDream(exchange);
+      } else if (path.matches("/dreams/\\d+$") && "DELETE".equals(method)) {
+        handleDeleteDream(exchange);
       } else if (path.matches("/dreams/\\d+/classification$") && "GET".equals(method)) {
         handleGetClassification(exchange);
       } else if (path.matches("/dreams/\\d+/classification$") && "PUT".equals(method)) {
@@ -212,6 +217,47 @@ public class DreamApiHandler implements HttpHandler {
       sendJsonResponse(exchange, 200, jsonResponse);
     } catch (SQLException e) {
       logger.log(Level.SEVERE, "Database error getting dream", e);
+      sendError(exchange, 500, ApiErrorCode.INTERNAL_ERROR, "Database error: " + e.getMessage());
+    }
+  }
+
+  private void handleUpdateDream(HttpExchange exchange) throws IOException {
+    try {
+      int dreamId = extractDreamId(exchange.getRequestURI().getPath());
+      UpdateDreamRequest request =
+          gson.fromJson(readRequestBody(exchange), UpdateDreamRequest.class);
+      if (request == null) {
+        sendError(exchange, 400, ApiErrorCode.VALIDATION_ERROR, "Invalid JSON request body");
+        return;
+      }
+
+      DreamEntry updated =
+          dreamService.updateDream(
+              dreamId,
+              request.getTitle(),
+              request.getContent(),
+              request.getDate(),
+              request.getType());
+      sendJsonResponse(exchange, 200, gson.toJson(toDreamResponse(updated)));
+    } catch (JsonSyntaxException e) {
+      sendError(exchange, 400, ApiErrorCode.VALIDATION_ERROR, "Invalid JSON request body");
+    } catch (DreamGridException e) {
+      sendError(exchange, statusFor(e.getErrorCode()), e.getErrorCode(), e.getMessage());
+    } catch (SQLException e) {
+      logger.log(Level.SEVERE, "Database error updating dream", e);
+      sendError(exchange, 500, ApiErrorCode.INTERNAL_ERROR, "Database error: " + e.getMessage());
+    }
+  }
+
+  private void handleDeleteDream(HttpExchange exchange) throws IOException {
+    try {
+      int dreamId = extractDreamId(exchange.getRequestURI().getPath());
+      dreamService.deleteDream(dreamId);
+      sendJsonResponse(exchange, 204, "");
+    } catch (DreamGridException e) {
+      sendError(exchange, statusFor(e.getErrorCode()), e.getErrorCode(), e.getMessage());
+    } catch (SQLException e) {
+      logger.log(Level.SEVERE, "Database error deleting dream", e);
       sendError(exchange, 500, ApiErrorCode.INTERNAL_ERROR, "Database error: " + e.getMessage());
     }
   }

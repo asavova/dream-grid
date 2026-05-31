@@ -50,6 +50,41 @@ GET /dreams/{id}
 
 `GET /dreams/{id}` returns `404` when the dream does not exist.
 
+## Update Dream
+
+```http
+PUT /dreams/{id}
+Content-Type: application/json
+```
+
+```json
+{
+  "title": "Updated title",
+  "content": "Updated content",
+  "date": "2026-06-01",
+  "type": "NEUTRAL"
+}
+```
+
+All fields are optional in the request. Missing fields keep their current values. The final merged payload is validated with the same rules as dream creation.
+
+Lifecycle behavior:
+
+- If only `title`, `date`, or `type` changes, the latest analysis snapshot is kept.
+- If `content` changes, `analysisStatus` becomes `STALE`.
+- Stale dreams do not reuse cached analysis.
+- Existing analysis-generated tags are removed.
+- Manual tags are preserved.
+- Analysis run history is unchanged.
+
+## Delete Dream
+
+```http
+DELETE /dreams/{id}
+```
+
+Removes the dream and cascades deletion to related `analysis_runs` and `dream_tag_links`. Orphaned tag rows are cleaned up from `dream_tags`. Missing dreams return `404`.
+
 `GET /dreams` also supports filters:
 
 ```http

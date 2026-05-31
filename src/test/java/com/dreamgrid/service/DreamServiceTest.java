@@ -16,6 +16,8 @@ import com.dreamgrid.repository.DreamRepository;
 import java.io.IOException;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.List;
 import org.junit.Before;
@@ -214,6 +216,103 @@ public class DreamServiceTest {
         assertThrows(DreamGridException.class, () -> dreamService.getAnalysisHistory(999));
 
     assertEquals(ApiErrorCode.NOT_FOUND, exception.getErrorCode());
+  }
+
+  @Test
+  public void editingContentMarksDreamStaleAndRemovesAnalysisTags() throws Exception {
+    DreamEntry dream =
+        dreamService.saveDream(
+            "Edit",
+            "Original content",
+            "2026-05-31",
+            DreamClassification.NEUTRAL,
+            List.of("manual"));
+    analysisClient.nextResult =
+        "{\"summary\":\"ok\",\"detectedSymbols\":[\"fire\"],\"detectedThemes\":[\"storm\"],\"modelVersion\":\"v1\"}";
+    dreamService.analyzeDream(dream.getId());
+
+    DreamEntry updated =
+        dreamService.updateDream(
+            dream.getId(),
+            "Edit",
+            "Updated content",
+            "2026-05-31",
+            DreamClassification.NEUTRAL.name());
+
+    assertEquals(AnalysisStatus.STALE, updated.getAnalysisStatus());
+    assertTrue(tagNames(updated).contains("manual"));
+    assertTrue(!tagNames(updated).contains("fire"));
+    assertTrue(!tagNames(updated).contains("storm"));
+  }
+
+  @Test
+  public void analyzingStaleDreamBypassesCache() throws Exception {
+    DreamEntry dream =
+        dreamService.saveDream(
+            "Edit",
+            "Original content",
+            "2026-05-31",
+            DreamClassification.NEUTRAL,
+            List.of("manual"));
+    analysisClient.nextResult = "{\"summary\":\"first\",\"modelVersion\":\"v1\"}";
+    dreamService.analyzeDream(dream.getId());
+    dreamService.updateDream(dream.getId(), "Edit", "Changed content", "2026-05-31", null);
+    analysisClient.nextResult = "{\"summary\":\"second\",\"modelVersion\":\"v2\"}";
+
+    String latestAnalysis = dreamService.analyzeDream(dream.getId());
+    DreamEntry reloaded = repository.findById(dream.getId());
+
+    assertEquals("{\"summary\":\"second\",\"modelVersion\":\"v2\"}", latestAnalysis);
+    assertEquals(2, analysisClient.calls);
+    assertEquals(AnalysisStatus.COMPLETED, reloaded.getAnalysisStatus());
+  }
+
+  @Test
+  public void editingMetadataWithoutContentChangeKeepsCompletedSnapshot() throws Exception {
+    DreamEntry dream =
+        dreamService.saveDream(
+            "Edit",
+            "Original content",
+            "2026-05-31",
+            DreamClassification.NEUTRAL,
+            List.of("manual"));
+    analysisClient.nextResult = "{\"summary\":\"first\",\"modelVersion\":\"v1\"}";
+    dreamService.analyzeDream(dream.getId());
+
+    DreamEntry updated =
+        dreamService.updateDream(
+            dream.getId(), "Updated title", "Original content", "2026-06-01", null);
+
+    assertEquals(AnalysisStatus.COMPLETED, updated.getAnalysisStatus());
+    assertEquals("{\"summary\":\"first\",\"modelVersion\":\"v1\"}", updated.getAnalysisResult());
+  }
+
+  @Test
+  public void deleteCascadesToTagsAndAnalysisRuns() throws Exception {
+    DreamEntry dream =
+        dreamService.saveDream(
+            "Delete",
+            "Original content",
+            "2026-05-31",
+            DreamClassification.NEUTRAL,
+            List.of("manual"));
+    analysisClient.nextResult = "{\"summary\":\"first\",\"modelVersion\":\"v1\"}";
+    dreamService.analyzeDream(dream.getId());
+
+    assertEquals(
+        1, countRows("SELECT COUNT(*) FROM analysis_runs WHERE dream_id = ?", dream.getId()));
+    assertTrue(
+        countRows("SELECT COUNT(*) FROM dream_tag_links WHERE dream_id = ?", dream.getId()) > 0);
+
+    dreamService.deleteDream(dream.getId());
+
+    assertEquals(0, countRows("SELECT COUNT(*) FROM dreams WHERE id = ?", dream.getId()));
+    assertEquals(
+        0, countRows("SELECT COUNT(*) FROM analysis_runs WHERE dream_id = ?", dream.getId()));
+    assertEquals(
+        0, countRows("SELECT COUNT(*) FROM dream_tag_links WHERE dream_id = ?", dream.getId()));
+    assertEquals(
+        0, countRows("SELECT COUNT(*) FROM dream_tags WHERE normalized_name = ?", "manual"));
   }
 
   @Test
@@ -726,6 +825,21 @@ public class DreamServiceTest {
         .map(usage -> usage.getCount())
         .findFirst()
         .orElse(0);
+  }
+
+  private int countRows(String sql, Object value) throws Exception {
+    try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+      if (value instanceof Integer intValue) {
+        stmt.setInt(1, intValue);
+      } else if (value instanceof String text) {
+        stmt.setString(1, text);
+      } else {
+        throw new IllegalArgumentException("Unsupported bind value");
+      }
+      try (ResultSet rs = stmt.executeQuery()) {
+        return rs.next() ? rs.getInt(1) : 0;
+      }
+    }
   }
 
   private void createSchema(Connection connection) throws Exception {

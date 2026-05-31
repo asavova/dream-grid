@@ -6,6 +6,7 @@ import com.dreamgrid.config.AppConfig;
 import com.dreamgrid.dto.TagUsage;
 import com.dreamgrid.model.AnalysisRun;
 import com.dreamgrid.model.AnalysisStatus;
+import com.dreamgrid.model.ClassificationSource;
 import com.dreamgrid.model.DreamClassification;
 import com.dreamgrid.model.DreamEntry;
 import com.dreamgrid.model.DreamTag;
@@ -236,6 +237,66 @@ public class DreamService {
     return dreamRepository.findById(id);
   }
 
+  public DreamEntry updateDream(
+      int dreamId, String title, String content, String dreamDate, String type)
+      throws SQLException {
+    DreamEntry existing = dreamRepository.findById(dreamId);
+    if (existing == null) {
+      throw new DreamGridException(ApiErrorCode.NOT_FOUND, "Dream not found");
+    }
+
+    String updatedTitle = title != null ? title : existing.getTitle();
+    String updatedContent = content != null ? content : existing.getContent();
+    String updatedDreamDate = dreamDate != null ? dreamDate : existing.getDreamDate();
+    validator.validateDream(updatedTitle, updatedContent, updatedDreamDate);
+    contentSafetyService.validateDreamContent(updatedContent);
+
+    DreamClassification updatedClassification = parseOptionalClassification(type);
+    boolean contentChanged = !updatedContent.equals(existing.getContent());
+
+    runInTransaction(
+        () -> {
+          existing.setTitle(updatedTitle);
+          existing.setContent(updatedContent);
+          existing.setDreamDate(updatedDreamDate);
+          existing.setTimestamp(System.currentTimeMillis());
+
+          if (updatedClassification != null) {
+            long updatedAt = System.currentTimeMillis();
+            existing.setUserClassification(updatedClassification);
+            existing.setEffectiveClassification(updatedClassification);
+            existing.setClassificationSource(ClassificationSource.USER);
+            existing.setClassificationReason("User classification override.");
+            existing.setClassificationUpdatedAt(updatedAt);
+          }
+
+          if (contentChanged) {
+            existing.markAnalysisStale();
+            dreamRepository.replaceAnalysisTags(dreamId, List.of());
+          }
+
+          dreamRepository.update(existing);
+          if (updatedClassification != null) {
+            dreamRepository.updateClassificationFields(existing);
+          }
+        });
+
+    return dreamRepository.findById(dreamId);
+  }
+
+  public void deleteDream(int dreamId) throws SQLException {
+    DreamEntry existing = dreamRepository.findById(dreamId);
+    if (existing == null) {
+      throw new DreamGridException(ApiErrorCode.NOT_FOUND, "Dream not found");
+    }
+
+    runInTransaction(
+        () -> {
+          dreamRepository.deleteById(dreamId);
+          dreamRepository.deleteUnlinkedTags();
+        });
+  }
+
   private void ensureDreamExists(int dreamId) throws SQLException {
     if (dreamRepository.findById(dreamId) == null) {
       throw new DreamGridException(ApiErrorCode.NOT_FOUND, "Dream not found");
@@ -382,6 +443,13 @@ public class DreamService {
       throw new DreamGridException(
           ApiErrorCode.VALIDATION_ERROR, "Invalid classification: " + value);
     }
+  }
+
+  private DreamClassification parseOptionalClassification(String value) {
+    if (value == null || value.isBlank()) {
+      return null;
+    }
+    return parseDreamClassification(value);
   }
 
   private AnalysisStatus parseAnalysisStatus(String value) {

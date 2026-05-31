@@ -157,6 +157,15 @@ public class DreamApiHandlerTest {
     assertEquals("NOT_FOUND", body.get("error").getAsString());
   }
 
+  @Test
+  public void deletingMissingDreamReturnsStructuredNotFound() throws Exception {
+    Response response = delete("/dreams/999");
+    JsonObject body = JsonParser.parseString(response.body()).getAsJsonObject();
+
+    assertEquals(404, response.statusCode());
+    assertEquals("NOT_FOUND", body.get("error").getAsString());
+  }
+
   private Response get(String path) throws Exception {
     HttpURLConnection connection = (HttpURLConnection) new URL(baseUrl + path).openConnection();
     connection.setRequestMethod("GET");
@@ -197,6 +206,18 @@ public class DreamApiHandlerTest {
     InputStream stream =
         statusCode >= 400 ? connection.getErrorStream() : connection.getInputStream();
     String response = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+    return new Response(statusCode, response);
+  }
+
+  private Response delete(String path) throws Exception {
+    HttpURLConnection connection = (HttpURLConnection) new URL(baseUrl + path).openConnection();
+    connection.setRequestMethod("DELETE");
+
+    int statusCode = connection.getResponseCode();
+    InputStream stream =
+        statusCode >= 400 ? connection.getErrorStream() : connection.getInputStream();
+    String response =
+        stream == null ? "" : new String(stream.readAllBytes(), StandardCharsets.UTF_8);
     return new Response(statusCode, response);
   }
 
