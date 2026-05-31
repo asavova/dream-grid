@@ -8,7 +8,7 @@ DreamGrid is a local backend for storing dreams and running AI-assisted analysis
 - Persist dreams in SQLite
 - Analyze dreams through a local Python service
 - Store analysis result, status, timestamp, and version
-- Normalize dream tags into the existing `DreamSymbol` vocabulary
+- Normalize dynamic dream tags into SQLite-backed tag tables
 - Search dreams by title or content
 - Filter dreams by type, analysis status, and tag
 - List tag usage counts
@@ -95,7 +95,29 @@ CREATE TABLE IF NOT EXISTS dreams (
 );
 ```
 
-`analysis_status` is the main state field. `analyzed` is kept as a compatibility flag.
+`analysis_status` is the main state field. `analyzed` and `symbol_tags` are kept as compatibility fields for older records.
+
+Tags are stored in normalized tables:
+
+```sql
+CREATE TABLE IF NOT EXISTS dream_tags (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    normalized_name TEXT NOT NULL UNIQUE,
+    created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS dream_tag_links (
+    dream_id INTEGER NOT NULL,
+    tag_id INTEGER NOT NULL,
+    source TEXT NOT NULL,
+    confidence_score REAL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (dream_id, tag_id, source)
+);
+```
+
+Existing `symbol_tags` values are migrated into these tables during database initialization.
 
 ## Running Locally
 
@@ -200,8 +222,8 @@ python -m unittest discover -s python/tests
 - The Python analysis backend is selected with `DREAMGRID_ANALYSIS_BACKEND`. The default `rule-based` backend is deterministic for local builds. The optional `transformers` backend requires `requirements-ml.txt`.
 - The Python `modelVersion` defaults to the selected backend for rule-based analysis or the configured model name for transformer analysis, unless `DREAMGRID_ANALYSIS_VERSION` is set.
 - The Java backend stores the `modelVersion` returned by the Python service. If `DREAMGRID_ANALYSIS_VERSION` is set for Java, it is used as an expected cache version for stale-analysis checks.
-- Tags are normalized in the service/model layer, not in API handlers.
-- Analysis symbols and themes come from the model response. The Java backend mirrors known symbols into its existing enum field.
+- Tags are normalized in the service layer and persisted through `dream_tags` and `dream_tag_links`.
+- Analysis symbols and themes from the Python service are stored as analysis-generated tags. Manual tags are preserved during reanalysis.
 - Validation limits are currently 160 characters for titles, 12,000 for dream content, and 1,000 for questions.
 - Content safety uses deterministic category rules before analysis calls are made. This is an application-level guard, not a replacement for provider moderation.
 

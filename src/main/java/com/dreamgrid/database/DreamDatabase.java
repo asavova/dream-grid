@@ -9,6 +9,12 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.text.Normalizer;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -30,6 +36,7 @@ public class DreamDatabase {
         Files.createDirectories(parent);
       }
       connection = DriverManager.getConnection(config.getDatabaseUrl());
+      enableForeignKeys(connection);
       logger.info("Connected to database: " + config.getDatabaseUrl());
 
       try (Statement stmt = connection.createStatement()) {
@@ -53,6 +60,8 @@ CREATE TABLE IF NOT EXISTS dreams (
 
         stmt.execute(createTableSQL);
         migrateDreamsTable(stmt);
+        createTagTables(stmt);
+        migrateLegacySymbolTags(stmt);
         logger.info("Dreams table ensured.");
       }
 
@@ -66,8 +75,15 @@ CREATE TABLE IF NOT EXISTS dreams (
   public static Connection getConnection() throws SQLException {
     if (connection == null || connection.isClosed()) {
       connection = DriverManager.getConnection(config.getDatabaseUrl());
+      enableForeignKeys(connection);
     }
     return connection;
+  }
+
+  private static void enableForeignKeys(Connection connection) throws SQLException {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.execute("PRAGMA foreign_keys = ON");
+    }
   }
 
   private static void migrateDreamsTable(Statement stmt) throws SQLException {
@@ -76,6 +92,100 @@ CREATE TABLE IF NOT EXISTS dreams (
     addColumnIfMissing(stmt, "analysis_version", "TEXT");
     addColumnIfMissing(stmt, "analysis_status", "TEXT NOT NULL DEFAULT 'PENDING'");
   }
+
+  private static void createTagTables(Statement stmt) throws SQLException {
+    stmt.execute(
+        """
+CREATE TABLE IF NOT EXISTS dream_tags (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    normalized_name TEXT NOT NULL UNIQUE,
+    created_at INTEGER NOT NULL
+);
+""");
+    stmt.execute(
+        """
+CREATE TABLE IF NOT EXISTS dream_tag_links (
+    dream_id INTEGER NOT NULL,
+    tag_id INTEGER NOT NULL,
+    source TEXT NOT NULL,
+    confidence_score REAL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (dream_id, tag_id, source),
+    FOREIGN KEY (dream_id) REFERENCES dreams(id) ON DELETE CASCADE,
+    FOREIGN KEY (tag_id) REFERENCES dream_tags(id) ON DELETE CASCADE
+);
+""");
+  }
+
+  private static void migrateLegacySymbolTags(Statement stmt) throws SQLException {
+    if (!columnExists(stmt, "symbol_tags")) {
+      return;
+    }
+
+    List<LegacyTagLink> links = new ArrayList<>();
+    try (ResultSet rs =
+        stmt.executeQuery(
+            "SELECT id, symbol_tags FROM dreams WHERE symbol_tags IS NOT NULL AND TRIM(symbol_tags) <> ''")) {
+      while (rs.next()) {
+        int dreamId = rs.getInt("id");
+        for (String normalizedName : parseLegacyTags(rs.getString("symbol_tags"))) {
+          links.add(new LegacyTagLink(dreamId, normalizedName));
+        }
+      }
+    }
+
+    for (LegacyTagLink link : links) {
+      long createdAt = System.currentTimeMillis();
+      stmt.executeUpdate(
+          "INSERT OR IGNORE INTO dream_tags (name, normalized_name, created_at) VALUES ('"
+              + escapeSql(link.normalizedName())
+              + "', '"
+              + escapeSql(link.normalizedName())
+              + "', "
+              + createdAt
+              + ")");
+      stmt.executeUpdate(
+          "INSERT OR IGNORE INTO dream_tag_links (dream_id, tag_id, source, confidence_score, created_at) "
+              + "SELECT "
+              + link.dreamId()
+              + ", id, 'MANUAL', NULL, "
+              + createdAt
+              + " FROM dream_tags WHERE normalized_name = '"
+              + escapeSql(link.normalizedName())
+              + "'");
+    }
+  }
+
+  private static Set<String> parseLegacyTags(String value) {
+    Set<String> tags = new LinkedHashSet<>();
+    if (value == null || value.isBlank()) {
+      return tags;
+    }
+
+    for (String rawTag : value.split(",")) {
+      String normalized = normalizeLegacyTag(rawTag);
+      if (!normalized.isBlank()) {
+        tags.add(normalized);
+      }
+    }
+    return tags;
+  }
+
+  private static String normalizeLegacyTag(String value) {
+    return Normalizer.normalize(value, Normalizer.Form.NFKC)
+        .toLowerCase(Locale.ROOT)
+        .replaceAll("[_\\-]+", " ")
+        .replaceAll("[^\\p{Alnum}\\s']", " ")
+        .replaceAll("\\s+", " ")
+        .trim();
+  }
+
+  private static String escapeSql(String value) {
+    return value.replace("'", "''");
+  }
+
+  private record LegacyTagLink(int dreamId, String normalizedName) {}
 
   private static void addColumnIfMissing(Statement stmt, String columnName, String columnDefinition)
       throws SQLException {

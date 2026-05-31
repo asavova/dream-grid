@@ -3,10 +3,10 @@ package com.dreamgrid.api;
 import static org.junit.Assert.assertEquals;
 
 import com.dreamgrid.client.DreamAnalysisClient;
-import com.dreamgrid.model.DreamSymbol;
 import com.dreamgrid.model.DreamType;
 import com.dreamgrid.repository.DreamRepository;
 import com.dreamgrid.service.DreamService;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.sun.net.httpserver.HttpServer;
@@ -29,6 +29,7 @@ public class DreamApiHandlerTest {
   private Connection connection;
   private DreamRepository repository;
   private FakeAnalysisClient analysisClient;
+  private DreamService dreamService;
   private HttpServer server;
   private String baseUrl;
 
@@ -38,8 +39,7 @@ public class DreamApiHandlerTest {
     createSchema(connection);
     repository = new DreamRepository(connection);
     analysisClient = new FakeAnalysisClient();
-    DreamService dreamService =
-        new DreamService(repository, analysisClient, "test-analysis-version");
+    dreamService = new DreamService(repository, analysisClient, "test-analysis-version");
 
     server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
     server.createContext("/", new DreamApiHandler(dreamService));
@@ -70,12 +70,7 @@ public class DreamApiHandlerTest {
   public void analysisServiceFailureReturnsStructuredError() throws Exception {
     repository.insert(
         new com.dreamgrid.model.DreamEntry(
-            "Dream",
-            "A safe dream.",
-            "2026-05-31",
-            123L,
-            List.of(DreamSymbol.UNKNOWN),
-            DreamType.ORDINARY));
+            "Dream", "A safe dream.", "2026-05-31", 123L, List.of(), DreamType.ORDINARY));
     analysisClient.nextFailure = new IOException("service unavailable");
 
     Response response = post("/dreams/1/analyze", "");
@@ -83,6 +78,30 @@ public class DreamApiHandlerTest {
 
     assertEquals(502, response.statusCode());
     assertEquals("ANALYSIS_SERVICE_ERROR", body.get("error").getAsString());
+  }
+
+  @Test
+  public void tagsEndpointReturnsUsageCounts() throws Exception {
+    dreamService.saveDream(
+        "Forest", "A quiet forest.", "2026-05-31", DreamType.ORDINARY, List.of("Forest", "forest"));
+
+    Response response = get("/tags");
+    JsonArray body = JsonParser.parseString(response.body()).getAsJsonArray();
+
+    assertEquals(200, response.statusCode());
+    assertEquals("forest", body.get(0).getAsJsonObject().get("normalizedName").getAsString());
+    assertEquals(1, body.get(0).getAsJsonObject().get("count").getAsInt());
+  }
+
+  private Response get(String path) throws Exception {
+    HttpURLConnection connection = (HttpURLConnection) new URL(baseUrl + path).openConnection();
+    connection.setRequestMethod("GET");
+
+    int statusCode = connection.getResponseCode();
+    InputStream stream =
+        statusCode >= 400 ? connection.getErrorStream() : connection.getInputStream();
+    String response = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+    return new Response(statusCode, response);
   }
 
   private Response post(String path, String body) throws Exception {
@@ -104,6 +123,7 @@ public class DreamApiHandlerTest {
 
   private void createSchema(Connection connection) throws Exception {
     try (Statement stmt = connection.createStatement()) {
+      stmt.execute("PRAGMA foreign_keys = ON");
       stmt.execute(
           """
 CREATE TABLE dreams (
@@ -119,6 +139,28 @@ CREATE TABLE dreams (
     analyzed_at INTEGER,
     analysis_version TEXT,
     analysis_status TEXT NOT NULL DEFAULT 'PENDING'
+);
+""");
+      stmt.execute(
+          """
+CREATE TABLE dream_tags (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    normalized_name TEXT NOT NULL UNIQUE,
+    created_at INTEGER NOT NULL
+);
+""");
+      stmt.execute(
+          """
+CREATE TABLE dream_tag_links (
+    dream_id INTEGER NOT NULL,
+    tag_id INTEGER NOT NULL,
+    source TEXT NOT NULL,
+    confidence_score REAL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (dream_id, tag_id, source),
+    FOREIGN KEY (dream_id) REFERENCES dreams(id) ON DELETE CASCADE,
+    FOREIGN KEY (tag_id) REFERENCES dream_tags(id) ON DELETE CASCADE
 );
 """);
     }

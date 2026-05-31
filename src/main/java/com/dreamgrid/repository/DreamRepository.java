@@ -1,14 +1,14 @@
 package com.dreamgrid.repository;
 
+import com.dreamgrid.dto.TagUsage;
 import com.dreamgrid.model.AnalysisStatus;
 import com.dreamgrid.model.DreamEntry;
-import com.dreamgrid.model.DreamSymbol;
+import com.dreamgrid.model.DreamTag;
 import com.dreamgrid.model.DreamType;
+import com.dreamgrid.model.TagSource;
 import java.sql.*;
 import java.util.ArrayList;
-import java.util.EnumMap;
 import java.util.List;
-import java.util.Map;
 
 public class DreamRepository {
   private final Connection connection;
@@ -27,7 +27,7 @@ public class DreamRepository {
       stmt.setString(3, entry.getDreamDate());
       stmt.setLong(4, entry.getTimestamp());
 
-      stmt.setString(5, DreamSymbol.serialize(entry.getSymbolTags()));
+      stmt.setString(5, "");
 
       DreamType type = entry.getDreamType();
       stmt.setString(6, type != null ? type.name() : null);
@@ -57,9 +57,7 @@ public class DreamRepository {
       stmt.setString(3, entry.getDreamDate());
       stmt.setLong(4, entry.getTimestamp());
 
-      List<DreamSymbol> tags = entry.getSymbolTags();
-      String tagStr = tags != null ? String.join(",", tags.stream().map(Enum::name).toList()) : "";
-      stmt.setString(5, tagStr);
+      stmt.setString(5, "");
 
       DreamType type = entry.getDreamType();
       stmt.setString(6, type != null ? type.name() : null);
@@ -90,8 +88,8 @@ public class DreamRepository {
     }
   }
 
-  public List<DreamEntry> findByTag(DreamSymbol tag) throws SQLException {
-    return findByFilters(null, null, null, tag);
+  public List<DreamEntry> findByTag(String normalizedTag) throws SQLException {
+    return findByFilters(null, null, null, normalizedTag);
   }
 
   public List<DreamEntry> findByDreamType(DreamType dreamType) throws SQLException {
@@ -107,7 +105,7 @@ public class DreamRepository {
   }
 
   public List<DreamEntry> findByFilters(
-      String keyword, DreamType dreamType, AnalysisStatus analysisStatus, DreamSymbol tag)
+      String keyword, DreamType dreamType, AnalysisStatus analysisStatus, String normalizedTag)
       throws SQLException {
     StringBuilder sql = new StringBuilder("SELECT * FROM dreams WHERE 1 = 1");
     List<SqlParameter> parameters = new ArrayList<>();
@@ -129,9 +127,10 @@ public class DreamRepository {
       parameters.add(stmt -> stmt.setString(analysisStatus.name()));
     }
 
-    if (tag != null) {
-      sql.append(" AND (',' || COALESCE(symbol_tags, '') || ',') LIKE ?");
-      parameters.add(stmt -> stmt.setString("%," + tag.name() + ",%"));
+    if (normalizedTag != null && !normalizedTag.isBlank()) {
+      sql.append(
+          " AND id IN (SELECT dream_id FROM dream_tag_links l JOIN dream_tags t ON t.id = l.tag_id WHERE t.normalized_name = ?)");
+      parameters.add(stmt -> stmt.setString(normalizedTag));
     }
 
     sql.append(" ORDER BY timestamp DESC, id DESC");
@@ -147,22 +146,25 @@ public class DreamRepository {
     }
   }
 
-  public Map<DreamSymbol, Integer> getTagUsageCounts() throws SQLException {
-    Map<DreamSymbol, Integer> counts = new EnumMap<>(DreamSymbol.class);
-    for (DreamSymbol symbol : DreamSymbol.values()) {
-      counts.put(symbol, 0);
-    }
-
-    String sql = "SELECT symbol_tags FROM dreams";
+  public List<TagUsage> getTagUsageCounts() throws SQLException {
+    String sql =
+        """
+SELECT t.name, t.normalized_name, COUNT(DISTINCT l.dream_id) AS usage_count
+FROM dream_tags t
+JOIN dream_tag_links l ON l.tag_id = t.id
+GROUP BY t.id, t.name, t.normalized_name
+ORDER BY usage_count DESC, t.normalized_name ASC
+""";
+    List<TagUsage> usages = new ArrayList<>();
     try (PreparedStatement stmt = connection.prepareStatement(sql);
         ResultSet rs = stmt.executeQuery()) {
       while (rs.next()) {
-        for (DreamSymbol symbol : DreamSymbol.deserialize(rs.getString("symbol_tags"))) {
-          counts.put(symbol, counts.getOrDefault(symbol, 0) + 1);
-        }
+        usages.add(
+            new TagUsage(
+                rs.getString("name"), rs.getString("normalized_name"), rs.getInt("usage_count")));
       }
     }
-    return counts;
+    return usages;
   }
 
   public List<DreamEntry> getAll() throws SQLException {
@@ -188,6 +190,117 @@ public class DreamRepository {
     return null;
   }
 
+  public void deleteById(int id) throws SQLException {
+    try (PreparedStatement stmt = connection.prepareStatement("DELETE FROM dreams WHERE id = ?")) {
+      stmt.setInt(1, id);
+      stmt.executeUpdate();
+    }
+  }
+
+  public DreamTag createOrFindTag(DreamTag tag) throws SQLException {
+    DreamTag existing = findTagByNormalizedName(tag.getNormalizedName());
+    if (existing != null) {
+      return existing;
+    }
+
+    String sql = "INSERT INTO dream_tags (name, normalized_name, created_at) VALUES (?, ?, ?)";
+    long createdAt = tag.getCreatedAt() > 0 ? tag.getCreatedAt() : System.currentTimeMillis();
+    try (PreparedStatement stmt =
+        connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
+      stmt.setString(1, tag.getName());
+      stmt.setString(2, tag.getNormalizedName());
+      stmt.setLong(3, createdAt);
+      stmt.executeUpdate();
+
+      try (ResultSet rs = stmt.getGeneratedKeys()) {
+        if (rs.next()) {
+          tag.setId(rs.getInt(1));
+        }
+      }
+    }
+    tag.setCreatedAt(createdAt);
+    return tag;
+  }
+
+  public DreamTag findTagByNormalizedName(String normalizedName) throws SQLException {
+    String sql =
+        "SELECT id, name, normalized_name, created_at FROM dream_tags WHERE normalized_name = ?";
+    try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+      stmt.setString(1, normalizedName);
+      try (ResultSet rs = stmt.executeQuery()) {
+        if (rs.next()) {
+          return new DreamTag(
+              rs.getInt("id"),
+              rs.getString("name"),
+              rs.getString("normalized_name"),
+              null,
+              null,
+              rs.getLong("created_at"));
+        }
+      }
+    }
+    return null;
+  }
+
+  public void linkTagToDream(int dreamId, DreamTag tag, TagSource source, Double confidenceScore)
+      throws SQLException {
+    DreamTag persisted = createOrFindTag(tag);
+    String sql =
+        """
+INSERT INTO dream_tag_links (dream_id, tag_id, source, confidence_score, created_at)
+VALUES (?, ?, ?, ?, ?)
+ON CONFLICT(dream_id, tag_id, source)
+DO UPDATE SET confidence_score = excluded.confidence_score
+""";
+    try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+      stmt.setInt(1, dreamId);
+      stmt.setInt(2, persisted.getId());
+      stmt.setString(3, source.name());
+      if (confidenceScore == null) {
+        stmt.setNull(4, Types.REAL);
+      } else {
+        stmt.setDouble(4, confidenceScore);
+      }
+      stmt.setLong(5, System.currentTimeMillis());
+      stmt.executeUpdate();
+    }
+  }
+
+  public void replaceAnalysisTags(int dreamId, List<DreamTag> tags) throws SQLException {
+    try (PreparedStatement stmt =
+        connection.prepareStatement(
+            "DELETE FROM dream_tag_links WHERE dream_id = ? AND source = ?")) {
+      stmt.setInt(1, dreamId);
+      stmt.setString(2, TagSource.ANALYSIS.name());
+      stmt.executeUpdate();
+    }
+
+    for (DreamTag tag : tags) {
+      linkTagToDream(dreamId, tag, TagSource.ANALYSIS, tag.getConfidenceScore());
+    }
+  }
+
+  public List<DreamTag> listTagsForDream(int dreamId) throws SQLException {
+    String sql =
+        """
+SELECT t.id, t.name, t.normalized_name, l.source, l.confidence_score, l.created_at
+FROM dream_tag_links l
+JOIN dream_tags t ON t.id = l.tag_id
+WHERE l.dream_id = ?
+ORDER BY t.normalized_name ASC, l.source ASC
+""";
+    List<DreamTag> tags = new ArrayList<>();
+    try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+      stmt.setInt(1, dreamId);
+      try (ResultSet rs = stmt.executeQuery()) {
+        while (rs.next()) {
+          tags.add(mapDreamTag(rs));
+        }
+      }
+    }
+    return tags;
+  }
+
   private List<DreamEntry> mapDreamEntries(ResultSet rs) throws SQLException {
     List<DreamEntry> dreams = new ArrayList<>();
     while (rs.next()) {
@@ -203,14 +316,26 @@ public class DreamRepository {
             rs.getString("content"),
             rs.getString("dream_date"),
             rs.getLong("timestamp"),
-            DreamSymbol.deserialize(rs.getString("symbol_tags")),
+            List.of(),
             parseDreamType(rs.getString("dream_type")),
             rs.getString("analysis_result"),
             getNullableLong(rs, "analyzed_at"),
             rs.getString("analysis_version"),
             parseAnalysisStatus(rs.getString("analysis_status"), rs.getInt("analyzed") == 1));
     entry.setId(rs.getInt("id"));
+    entry.setSymbolTags(listTagsForDream(entry.getId()));
     return entry;
+  }
+
+  private DreamTag mapDreamTag(ResultSet rs) throws SQLException {
+    double confidenceScore = rs.getDouble("confidence_score");
+    return new DreamTag(
+        rs.getInt("id"),
+        rs.getString("name"),
+        rs.getString("normalized_name"),
+        TagSource.valueOf(rs.getString("source")),
+        rs.wasNull() ? null : confidenceScore,
+        rs.getLong("created_at"));
   }
 
   private DreamType parseDreamType(String value) {

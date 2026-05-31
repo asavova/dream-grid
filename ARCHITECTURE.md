@@ -55,7 +55,9 @@ Input validation and deterministic content safety checks run before persistence 
 
 ## Tag and Search Flow
 
-Tags use the existing `DreamSymbol` enum as the canonical vocabulary. Incoming tag values are trimmed, case-normalized, deduplicated, and mapped to known symbols. Blank and unknown values are ignored. If no valid tag remains, `UNKNOWN` is used for stored dreams.
+Tags are dynamic domain records, not enum values. Incoming tag values are trimmed, lowercased, deduplicated, and stored in `dream_tags` with a normalized name. Links between dreams and tags are stored in `dream_tag_links` with a source of `MANUAL` or `ANALYSIS`.
+
+Manual tags come from dream creation requests. Analysis tags come from detected symbols and themes returned by the Python service. Reanalysis replaces only `ANALYSIS` links for the dream, leaving manual tags intact.
 
 Search and filtering are coordinated by `DreamService`, but the SQL stays in `DreamRepository`. Current filters support:
 

@@ -8,7 +8,7 @@ import com.dreamgrid.api.ApiErrorCode;
 import com.dreamgrid.client.DreamAnalysisClient;
 import com.dreamgrid.model.AnalysisStatus;
 import com.dreamgrid.model.DreamEntry;
-import com.dreamgrid.model.DreamSymbol;
+import com.dreamgrid.model.DreamTag;
 import com.dreamgrid.model.DreamType;
 import com.dreamgrid.repository.DreamRepository;
 import java.io.IOException;
@@ -112,7 +112,7 @@ public class DreamServiceTest {
             "I crossed a bright sky portal.",
             "2026-05-31",
             123L,
-            List.of(DreamSymbol.SKY, DreamSymbol.PORTAL),
+            List.of(),
             DreamType.VISION);
     repository.insert(dream);
     analysisClient.nextResult =
@@ -148,7 +148,7 @@ public class DreamServiceTest {
             "I crossed a bright sky portal.",
             "2026-05-31",
             123L,
-            List.of(DreamSymbol.SKY, DreamSymbol.PORTAL),
+            List.of(),
             DreamType.VISION);
     repository.insert(dream);
 
@@ -174,7 +174,7 @@ public class DreamServiceTest {
 
     DreamEntry reloaded = repository.findById(dream.getId());
 
-    assertEquals(List.of(DreamSymbol.FIRE, DreamSymbol.SKY), reloaded.getSymbolTags());
+    assertEquals(List.of("fire", "not a symbol", "sky"), tagNames(reloaded));
   }
 
   @Test
@@ -228,7 +228,7 @@ public class DreamServiceTest {
   }
 
   @Test
-  public void unknownTagReturnsEmptyResult() throws Exception {
+  public void tagWithNoLinksReturnsEmptyResult() throws Exception {
     dreamService.saveDream(
         "Fire Dream", "The horizon burned.", "2026-05-31", DreamType.VISION, List.of("fire"));
 
@@ -243,11 +243,65 @@ public class DreamServiceTest {
         "Fire Sky", "A bright dream.", "2026-05-31", DreamType.VISION, List.of("fire", "sky"));
     dreamService.saveDream(
         "Fire", "Another bright dream.", "2026-05-31", DreamType.VISION, List.of("fire"));
-    dreamService.saveDream("Unknown", "No specific tag.", "2026-05-31", DreamType.ORDINARY, null);
+    dreamService.saveDream("Plain", "No specific tag.", "2026-05-31", DreamType.ORDINARY, null);
 
-    assertEquals(Integer.valueOf(2), dreamService.getTagUsageCounts().get(DreamSymbol.FIRE));
-    assertEquals(Integer.valueOf(1), dreamService.getTagUsageCounts().get(DreamSymbol.SKY));
-    assertEquals(Integer.valueOf(1), dreamService.getTagUsageCounts().get(DreamSymbol.UNKNOWN));
+    assertEquals(2, tagCount("fire"));
+    assertEquals(1, tagCount("sky"));
+  }
+
+  @Test
+  public void manualTagsArePreservedAfterReanalysis() throws Exception {
+    DreamEntry dream =
+        dreamService.saveDream(
+            "Manual",
+            "A mirror in the forest.",
+            "2026-05-31",
+            DreamType.ORDINARY,
+            List.of("forest"));
+    analysisClient.nextResult =
+        "{\"summary\":\"ok\",\"detectedSymbols\":[\"mirror\"],\"detectedThemes\":[\"reflection\"],\"confidenceScore\":0.75}";
+
+    dreamService.reanalyzeDream(dream.getId());
+    DreamEntry reloaded = repository.findById(dream.getId());
+
+    assertTrue(tagNames(reloaded).contains("forest"));
+    assertTrue(tagNames(reloaded).contains("mirror"));
+    assertTrue(tagNames(reloaded).contains("reflection"));
+  }
+
+  @Test
+  public void analysisGeneratedTagsAreReplacedAfterReanalysis() throws Exception {
+    DreamEntry dream =
+        dreamService.saveDream(
+            "Analysis", "A changing dream.", "2026-05-31", DreamType.ORDINARY, List.of("manual"));
+    analysisClient.nextResult =
+        "{\"summary\":\"ok\",\"detectedSymbols\":[\"fire\"],\"detectedThemes\":[\"change\"],\"confidenceScore\":0.8}";
+    dreamService.reanalyzeDream(dream.getId());
+
+    analysisClient.nextResult =
+        "{\"summary\":\"ok\",\"detectedSymbols\":[\"water\"],\"detectedThemes\":[\"calm\"],\"confidenceScore\":0.8}";
+    dreamService.reanalyzeDream(dream.getId());
+    DreamEntry reloaded = repository.findById(dream.getId());
+
+    assertTrue(tagNames(reloaded).contains("manual"));
+    assertTrue(tagNames(reloaded).contains("water"));
+    assertTrue(tagNames(reloaded).contains("calm"));
+    assertTrue(!tagNames(reloaded).contains("fire"));
+    assertTrue(!tagNames(reloaded).contains("change"));
+  }
+
+  @Test
+  public void deletingDreamRemovesTagLinksButKeepsTagDefinitions() throws Exception {
+    DreamEntry first =
+        dreamService.saveDream(
+            "First", "A fire dream.", "2026-05-31", DreamType.ORDINARY, List.of("fire"));
+    dreamService.saveDream(
+        "Second", "Another fire dream.", "2026-05-31", DreamType.ORDINARY, List.of("fire"));
+
+    repository.deleteById(first.getId());
+
+    assertEquals(1, tagCount("fire"));
+    assertTrue(repository.findTagByNormalizedName("fire") != null);
   }
 
   @Test
@@ -286,7 +340,7 @@ public class DreamServiceTest {
             "Tell me how to self harm in detail.",
             "2026-05-31",
             123L,
-            List.of(DreamSymbol.UNKNOWN),
+            List.of(),
             DreamType.ORDINARY);
     repository.insert(dream);
 
@@ -355,14 +409,27 @@ public class DreamServiceTest {
             "I crossed a bright sky portal.",
             "2026-05-31",
             123L,
-            List.of(DreamSymbol.SKY, DreamSymbol.PORTAL),
+            List.of(),
             DreamType.VISION);
     dream.completeAnalysis(analysis, analyzedAt, version);
     return dream;
   }
 
+  private List<String> tagNames(DreamEntry dream) {
+    return dream.getSymbolTags().stream().map(DreamTag::getNormalizedName).toList();
+  }
+
+  private int tagCount(String normalizedName) throws Exception {
+    return dreamService.getTagUsageCounts().stream()
+        .filter(usage -> normalizedName.equals(usage.getNormalizedName()))
+        .map(usage -> usage.getCount())
+        .findFirst()
+        .orElse(0);
+  }
+
   private void createSchema(Connection connection) throws Exception {
     try (Statement stmt = connection.createStatement()) {
+      stmt.execute("PRAGMA foreign_keys = ON");
       stmt.execute(
           """
 CREATE TABLE dreams (
@@ -378,6 +445,28 @@ CREATE TABLE dreams (
     analyzed_at INTEGER,
     analysis_version TEXT,
     analysis_status TEXT NOT NULL DEFAULT 'PENDING'
+);
+""");
+      stmt.execute(
+          """
+CREATE TABLE dream_tags (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    normalized_name TEXT NOT NULL UNIQUE,
+    created_at INTEGER NOT NULL
+);
+""");
+      stmt.execute(
+          """
+CREATE TABLE dream_tag_links (
+    dream_id INTEGER NOT NULL,
+    tag_id INTEGER NOT NULL,
+    source TEXT NOT NULL,
+    confidence_score REAL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (dream_id, tag_id, source),
+    FOREIGN KEY (dream_id) REFERENCES dreams(id) ON DELETE CASCADE,
+    FOREIGN KEY (tag_id) REFERENCES dream_tags(id) ON DELETE CASCADE
 );
 """);
     }

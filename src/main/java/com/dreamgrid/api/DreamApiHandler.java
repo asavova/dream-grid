@@ -119,8 +119,10 @@ public class DreamApiHandler implements HttpHandler {
   private void handleTags(HttpExchange exchange) throws IOException {
     try {
       List<TagResponse> responses =
-          dreamService.getTagUsageCounts().entrySet().stream()
-              .map(entry -> new TagResponse(entry.getKey().name().toLowerCase(), entry.getValue()))
+          dreamService.getTagUsageCounts().stream()
+              .map(
+                  usage ->
+                      new TagResponse(usage.getName(), usage.getNormalizedName(), usage.getCount()))
               .collect(Collectors.toList());
       sendJsonResponse(exchange, 200, gson.toJson(responses));
     } catch (SQLException e) {

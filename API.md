@@ -26,7 +26,8 @@ Content-Type: application/json
   "title": "Mountain Climb",
   "content": "I was climbing a mountain under a clear sky",
   "date": "2026-05-31",
-  "type": "VISION"
+  "type": "VISION",
+  "tags": ["mountain", "clear sky"]
 }
 ```
 
@@ -38,6 +39,7 @@ Validation rules:
 - `content` must not be blank and must be at most 12,000 characters.
 - `date`, when provided, must use `yyyy-MM-dd` or `yyyy-MM-dd HH:mm:ss`.
 - `type`, when provided, must match a known dream type.
+- `tags`, when provided, are trimmed, lowercased, deduplicated, and stored as manual tags.
 
 ## Read Dreams
 
@@ -70,7 +72,7 @@ Search checks both `title` and `content`.
 GET /dreams/tags/sky
 ```
 
-Tags are normalized before querying. Unknown tags return an empty list.
+Tags are normalized before querying. A tag with no linked dreams returns an empty list.
 
 ## Tag Counts
 
@@ -84,10 +86,12 @@ Example response:
 [
   {
     "tag": "fire",
+    "normalizedName": "fire",
     "count": 2
   },
   {
-    "tag": "sky",
+    "tag": "clear sky",
+    "normalizedName": "clear sky",
     "count": 1
   }
 ]
@@ -186,7 +190,7 @@ POST /ask
 
 `confidenceScore` is the model's confidence that the analysis is grounded in the dream text. It is a useful signal, not a guarantee.
 
-Known symbols from the model response are normalized into the Java `DreamSymbol` enum before being persisted as `symbolTags`.
+Symbols and themes from the model response are normalized into dynamic analysis-generated tags. Reanalysis replaces analysis-generated tags for that dream and preserves manual tags.
 
 ## Error Format
 

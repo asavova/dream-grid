@@ -3,10 +3,12 @@ package com.dreamgrid.service;
 import com.dreamgrid.api.ApiErrorCode;
 import com.dreamgrid.client.DreamAnalysisClient;
 import com.dreamgrid.config.AppConfig;
+import com.dreamgrid.dto.TagUsage;
 import com.dreamgrid.model.AnalysisStatus;
 import com.dreamgrid.model.DreamEntry;
-import com.dreamgrid.model.DreamSymbol;
+import com.dreamgrid.model.DreamTag;
 import com.dreamgrid.model.DreamType;
+import com.dreamgrid.model.TagSource;
 import com.dreamgrid.repository.DreamRepository;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
@@ -18,11 +20,8 @@ import java.sql.SQLException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
-import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
-import java.util.Optional;
 
 public class DreamService {
   private final DreamRepository dreamRepository;
@@ -30,6 +29,7 @@ public class DreamService {
   private final String expectedAnalysisVersion;
   private final DreamValidator validator;
   private final ContentSafetyService contentSafetyService;
+  private final TagNormalizationService tagNormalizationService;
   private final Gson gson = new Gson();
 
   public DreamService(Connection connection) {
@@ -39,6 +39,7 @@ public class DreamService {
     this.expectedAnalysisVersion = config.getAnalysisModelVersion();
     this.validator = new DreamValidator();
     this.contentSafetyService = new ContentSafetyService();
+    this.tagNormalizationService = new TagNormalizationService();
   }
 
   public DreamService(DreamRepository dreamRepository, DreamAnalysisClient analysisClient) {
@@ -52,7 +53,8 @@ public class DreamService {
         analysisClient,
         analysisVersion,
         new DreamValidator(),
-        new ContentSafetyService());
+        new ContentSafetyService(),
+        new TagNormalizationService());
   }
 
   public DreamService(
@@ -60,16 +62,23 @@ public class DreamService {
       DreamAnalysisClient analysisClient,
       String analysisVersion,
       DreamValidator validator,
-      ContentSafetyService contentSafetyService) {
+      ContentSafetyService contentSafetyService,
+      TagNormalizationService tagNormalizationService) {
     this.dreamRepository = dreamRepository;
     this.analysisClient = analysisClient;
     this.expectedAnalysisVersion = analysisVersion == null ? "" : analysisVersion.trim();
     this.validator = validator;
     this.contentSafetyService = contentSafetyService;
+    this.tagNormalizationService = tagNormalizationService;
   }
 
   public void addDream(DreamEntry dream) throws SQLException {
     dreamRepository.insert(dream);
+    for (DreamTag tag : dream.getSymbolTags()) {
+      TagSource source = tag.getSource() != null ? tag.getSource() : TagSource.MANUAL;
+      dreamRepository.linkTagToDream(dream.getId(), tag, source, tag.getConfidenceScore());
+    }
+    dream.setSymbolTags(dreamRepository.listTagsForDream(dream.getId()));
   }
 
   public DreamEntry saveDream(String title, String content, String dreamDate, DreamType dreamType)
@@ -92,9 +101,13 @@ public class DreamService {
             ? dreamDate
             : new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date(timestamp));
     DreamType type = dreamType != null ? dreamType : DreamType.NONE;
-    List<DreamSymbol> tags = DreamSymbol.normalizeTagNames(requestedTags);
+    List<DreamTag> tags = tagNormalizationService.normalize(requestedTags, TagSource.MANUAL);
     DreamEntry entry = new DreamEntry(title, content, formattedDate, timestamp, tags, type);
     dreamRepository.insert(entry);
+    for (DreamTag tag : tags) {
+      dreamRepository.linkTagToDream(entry.getId(), tag, TagSource.MANUAL, null);
+    }
+    entry.setSymbolTags(dreamRepository.listTagsForDream(entry.getId()));
     return entry;
   }
 
@@ -125,8 +138,8 @@ public class DreamService {
       String analysis = analysisClient.analyzeDream(dream.getContent());
       dream.completeAnalysis(
           analysis, System.currentTimeMillis(), resolveAnalysisVersion(analysis));
-      applyDetectedSymbols(dream, analysis);
       dreamRepository.update(dream);
+      dreamRepository.replaceAnalysisTags(dreamId, parseAnalysisTags(analysis));
       return analysis;
     } catch (IOException e) {
       dream.failAnalysis();
@@ -147,39 +160,31 @@ public class DreamService {
   }
 
   public List<DreamEntry> getDreamsByTag(String tag) throws SQLException {
-    Optional<DreamSymbol> symbol = DreamSymbol.fromTag(tag);
-    if (symbol.isEmpty()) {
+    String normalizedTag = tagNormalizationService.normalizeName(tag);
+    if (normalizedTag.isBlank()) {
       return List.of();
     }
-    return dreamRepository.findByTag(symbol.get());
+    return dreamRepository.findByTag(normalizedTag);
   }
 
   public List<DreamEntry> filterDreams(String type, String status, String tag) throws SQLException {
     DreamType dreamType = parseDreamType(type);
     AnalysisStatus analysisStatus = parseAnalysisStatus(status);
-    Optional<DreamSymbol> symbol = DreamSymbol.fromTag(tag);
+    String normalizedTag = tagNormalizationService.normalizeName(tag);
 
-    if (tag != null && !tag.isBlank() && symbol.isEmpty()) {
-      return List.of();
-    }
-
-    if (dreamType == null && analysisStatus == null && symbol.isEmpty()) {
+    if (dreamType == null && analysisStatus == null && normalizedTag.isBlank()) {
       return dreamRepository.getAll();
     }
 
-    return dreamRepository.findByFilters(null, dreamType, analysisStatus, symbol.orElse(null));
+    return dreamRepository.findByFilters(null, dreamType, analysisStatus, normalizedTag);
   }
 
   public DreamEntry getDreamById(int id) throws SQLException {
     return dreamRepository.findById(id);
   }
 
-  public Map<DreamSymbol, Integer> getTagUsageCounts() throws SQLException {
-    Map<DreamSymbol, Integer> counts = new EnumMap<>(dreamRepository.getTagUsageCounts());
-    for (DreamSymbol symbol : DreamSymbol.values()) {
-      counts.putIfAbsent(symbol, 0);
-    }
-    return counts;
+  public List<TagUsage> getTagUsageCounts() throws SQLException {
+    return dreamRepository.getTagUsageCounts();
   }
 
   public String askQuestionAboutDream(int dreamId, String question)
@@ -221,13 +226,6 @@ public class DreamService {
         && !dream.getAnalysisResult().isBlank();
   }
 
-  private void applyDetectedSymbols(DreamEntry dream, String analysis) {
-    List<DreamSymbol> symbols = parseDetectedSymbols(analysis);
-    if (!symbols.isEmpty()) {
-      dream.setSymbolTags(symbols);
-    }
-  }
-
   private String resolveAnalysisVersion(String analysis) {
     String responseVersion = extractModelVersion(analysis);
     if (responseVersion != null && !responseVersion.isBlank()) {
@@ -253,28 +251,47 @@ public class DreamService {
     }
   }
 
-  private List<DreamSymbol> parseDetectedSymbols(String analysis) {
+  private List<DreamTag> parseAnalysisTags(String analysis) {
     try {
       JsonObject root = gson.fromJson(analysis, JsonObject.class);
-      if (root == null
-          || !root.has("detectedSymbols")
-          || !root.get("detectedSymbols").isJsonArray()) {
+      if (root == null) {
         return List.of();
       }
 
-      JsonArray detectedSymbols = root.getAsJsonArray("detectedSymbols");
-      List<DreamSymbol> symbols = new ArrayList<>();
-      for (JsonElement element : detectedSymbols) {
-        if (!element.isJsonPrimitive()) {
-          continue;
-        }
-
-        String value = element.getAsString().trim().toUpperCase(Locale.ROOT);
-        DreamSymbol.fromTag(value).ifPresent(symbols::add);
-      }
-      return DreamSymbol.normalizeSymbols(symbols);
+      List<String> values = new ArrayList<>();
+      addJsonArrayValues(root, "detectedSymbols", values);
+      addJsonArrayValues(root, "detectedThemes", values);
+      List<DreamTag> tags = tagNormalizationService.normalize(values, TagSource.ANALYSIS);
+      Double confidenceScore = extractConfidenceScore(root);
+      tags.forEach(tag -> tag.setConfidenceScore(confidenceScore));
+      return tags;
     } catch (RuntimeException e) {
       return List.of();
+    }
+  }
+
+  private void addJsonArrayValues(JsonObject root, String fieldName, List<String> values) {
+    if (!root.has(fieldName) || !root.get(fieldName).isJsonArray()) {
+      return;
+    }
+
+    JsonArray array = root.getAsJsonArray(fieldName);
+    for (JsonElement element : array) {
+      if (element.isJsonPrimitive()) {
+        values.add(element.getAsString());
+      }
+    }
+  }
+
+  private Double extractConfidenceScore(JsonObject root) {
+    if (!root.has("confidenceScore") || !root.get("confidenceScore").isJsonPrimitive()) {
+      return null;
+    }
+
+    try {
+      return root.get("confidenceScore").getAsDouble();
+    } catch (RuntimeException e) {
+      return null;
     }
   }
 

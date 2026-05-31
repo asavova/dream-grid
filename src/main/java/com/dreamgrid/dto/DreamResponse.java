@@ -1,7 +1,7 @@
 package com.dreamgrid.dto;
 
 import com.dreamgrid.model.AnalysisStatus;
-import com.dreamgrid.model.DreamSymbol;
+import com.dreamgrid.model.DreamTag;
 import com.dreamgrid.model.DreamType;
 import java.util.List;
 
@@ -11,7 +11,7 @@ public class DreamResponse {
   private String content;
   private String dreamDate;
   private long timestamp;
-  private List<DreamSymbol> symbolTags;
+  private List<DreamTag> symbolTags;
   private DreamType dreamType;
   private boolean analyzed;
   private String analysisResult;
@@ -27,7 +27,7 @@ public class DreamResponse {
       String content,
       String dreamDate,
       long timestamp,
-      List<DreamSymbol> symbolTags,
+      List<DreamTag> symbolTags,
       DreamType dreamType,
       boolean analyzed,
       String analysisResult,
@@ -88,11 +88,11 @@ public class DreamResponse {
     this.timestamp = timestamp;
   }
 
-  public List<DreamSymbol> getSymbolTags() {
+  public List<DreamTag> getSymbolTags() {
     return symbolTags;
   }
 
-  public void setSymbolTags(List<DreamSymbol> symbolTags) {
+  public void setSymbolTags(List<DreamTag> symbolTags) {
     this.symbolTags = symbolTags;
   }
 
