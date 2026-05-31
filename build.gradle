@@ -12,7 +12,7 @@ sourceCompatibility = '17'
 targetCompatibility = '17'
 
 application {
-    mainClass = 'src/main/java/Main.java'
+    mainClass = 'Main'
 }
 
 repositories {
@@ -21,19 +21,12 @@ repositories {
 
 dependencies {
     implementation 'org.xerial:sqlite-jdbc:3.50.2.0'
+    implementation 'com.google.code.gson:gson:2.10.1'
     testImplementation 'junit:junit:4.13.2'
 }
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
-}
-
-task runFlameBot(type: Exec) {
-    description = 'Runs the FlameBot Python interpreter with test input.'
-    group = 'flamebot'
-
-    workingDir "$projectDir" // коренът на проекта
-    commandLine "$projectDir/flamebot-env/bin/python3", "flamebot_interpreter.py", "cat", "mirror", "fire"
 }
 
 spotless {

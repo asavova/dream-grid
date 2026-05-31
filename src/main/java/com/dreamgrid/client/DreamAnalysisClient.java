@@ -1,15 +1,17 @@
+package com.dreamgrid.client;
+
 import java.io.*;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 
-public class FlamebotAIClient {
+public class DreamAnalysisClient {
 
   private static final String HUGGINGFACE_TOKEN = System.getenv("HUGGINGFACE_TOKEN");
 
   private static final String AI_API_ENDPOINT = "http://127.0.0.1:5005/analyze";
 
-  public static String analyzeDream(String dream) throws IOException {
+  public String analyzeDream(String dream) throws IOException {
     URL url = new URL(AI_API_ENDPOINT);
     HttpURLConnection con = getHttpURLConnection(dream, url);
 
@@ -33,9 +35,6 @@ public class FlamebotAIClient {
     con.setRequestProperty("Authorization", "Bearer " + HUGGINGFACE_TOKEN);
 
     con.setRequestProperty("Content-Type", "application/json");
-
-    //        String prompt = "[INST] Analyze this dream: \"" + dream + "\". Give me tags and type.
-    // [/INST]";
 
     String jsonInput = "{\"dream\": \"" + dream.replace("\"", "\\\"") + "\"}";
 

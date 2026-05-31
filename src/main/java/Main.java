@@ -1,57 +1,37 @@
-import database.DreamDatabase;
-import java.sql.Connection;
+import com.dreamgrid.api.DreamGridServer;
+import com.dreamgrid.database.DreamDatabase;
+import com.dreamgrid.service.DreamService;
+import java.io.IOException;
 import java.sql.SQLException;
-import java.util.*;
-import model.DreamEntry;
-import model.SymbolTag;
-import service.DreamService;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class Main {
+  private static final Logger logger = Logger.getLogger(Main.class.getName());
+  private static final int SERVER_PORT = 8080;
 
-  public static void main(String[] args) {
+  public static void main(String[] args) throws IOException, SQLException {
+    // Bootstrap dependencies
     DreamDatabase.initialize();
-    try (Connection connection = DreamDatabase.getConnection()) {
-      DreamService dreamService = new DreamService(connection);
-      Scanner scanner = new Scanner(System.in);
+    DreamService dreamService = new DreamService(DreamDatabase.getConnection());
 
-      System.out.println("Welcome to DreamGrid – enter your dream:");
+    // Start HTTP server
+    DreamGridServer server = new DreamGridServer(SERVER_PORT, dreamService);
 
-      //            System.out.print("Title: ");
-      //            String title = scanner.nextLine();
-      //
-      //            System.out.print("Content: ");
-      //            String content = scanner.nextLine();
-      //
-      //            System.out.print("Dream date (YYYY-MM-DD): ");
-      String content = " I was walking through a forest and saw a cat and a mirror";
-      String title = "cat";
-      String date = "2020-04-04";
+    try {
+      server.start();
+      logger.info("DreamGrid REST API server started on http://localhost:" + SERVER_PORT);
+      logger.info("Press Ctrl+C to stop the server");
 
-      long timestamp = System.currentTimeMillis();
-
-      // Send to FlameBot for analysis (via Python)
-      String flamebotResponse = FlamebotAIClient.analyzeDream(content);
-      System.out.println("FlameBot response: " + flamebotResponse);
-
-      // Example: extracting tags from the response
-      List<SymbolTag> tags = new ArrayList<>();
-      if (flamebotResponse.contains("fire")) tags.add(SymbolTag.FIRE);
-      if (flamebotResponse.contains("water")) tags.add(SymbolTag.WATER);
-      if (flamebotResponse.contains("cat")) tags.add(SymbolTag.CAT);
-
-      // TODO: JSON parsing
-
-      DreamEntry entry = new DreamEntry(title, content, date, timestamp, tags);
-      dreamService.addDream(entry);
-
-      System.out.println("Dream saved with tags: " + tags);
-
-    } catch (SQLException e) {
-      e.printStackTrace();
-      System.err.println("Database error: " + e.getMessage());
-    } catch (Exception e) {
-      e.printStackTrace();
-      System.err.println("General error: " + e.getMessage());
+      // Keep the server running
+      Thread.currentThread().join();
+    } catch (InterruptedException e) {
+      logger.log(Level.INFO, "Server interrupted");
+      Thread.currentThread().interrupt();
+    } finally {
+      server.stop();
+      DreamDatabase.close();
+      logger.info("Application shutdown complete");
     }
   }
 }

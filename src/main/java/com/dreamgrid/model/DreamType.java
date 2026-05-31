@@ -1,4 +1,4 @@
-package model;
+package com.dreamgrid.model;
 
 public enum DreamType {
   LUCID,
