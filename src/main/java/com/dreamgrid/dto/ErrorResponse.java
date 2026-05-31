@@ -1,20 +1,22 @@
 package com.dreamgrid.dto;
 
+import com.dreamgrid.api.ApiErrorCode;
+
 public class ErrorResponse {
-  private int statusCode;
+  private String error;
   private String message;
 
-  public ErrorResponse(int statusCode, String message) {
-    this.statusCode = statusCode;
+  public ErrorResponse(ApiErrorCode error, String message) {
+    this.error = error.name();
     this.message = message;
   }
 
-  public int getStatusCode() {
-    return statusCode;
+  public String getError() {
+    return error;
   }
 
-  public void setStatusCode(int statusCode) {
-    this.statusCode = statusCode;
+  public void setError(String error) {
+    this.error = error;
   }
 
   public String getMessage() {

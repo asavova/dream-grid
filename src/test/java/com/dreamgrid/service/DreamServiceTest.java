@@ -4,6 +4,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
+import com.dreamgrid.api.ApiErrorCode;
 import com.dreamgrid.client.DreamAnalysisClient;
 import com.dreamgrid.model.AnalysisStatus;
 import com.dreamgrid.model.DreamEntry;
@@ -19,6 +20,8 @@ import org.junit.Before;
 import org.junit.Test;
 
 public class DreamServiceTest {
+  private static final String EXPECTED_ANALYSIS_VERSION = "test-analysis-version";
+
   private Connection connection;
   private DreamRepository repository;
   private FakeAnalysisClient analysisClient;
@@ -30,12 +33,12 @@ public class DreamServiceTest {
     createSchema(connection);
     repository = new DreamRepository(connection);
     analysisClient = new FakeAnalysisClient();
-    dreamService = new DreamService(repository, analysisClient, "v1");
+    dreamService = new DreamService(repository, analysisClient, EXPECTED_ANALYSIS_VERSION);
   }
 
   @Test
   public void completedAnalysisReturnsCachedResultWithoutCallingClient() throws Exception {
-    DreamEntry dream = completedDream("cached analysis", 100L, "v1");
+    DreamEntry dream = completedDream("cached analysis", 100L, EXPECTED_ANALYSIS_VERSION);
     repository.insert(dream);
 
     String analysis = dreamService.analyzeDream(dream.getId());
@@ -46,7 +49,7 @@ public class DreamServiceTest {
 
   @Test
   public void forcedReanalysisCallsClientAndReplacesAnalysis() throws Exception {
-    DreamEntry dream = completedDream("old analysis", 100L, "v1");
+    DreamEntry dream = completedDream("old analysis", 100L, EXPECTED_ANALYSIS_VERSION);
     repository.insert(dream);
     analysisClient.nextResult = "new analysis";
 
@@ -57,12 +60,12 @@ public class DreamServiceTest {
     assertEquals(1, analysisClient.calls);
     assertEquals("new analysis", reloaded.getAnalysisResult());
     assertEquals(AnalysisStatus.COMPLETED, reloaded.getAnalysisStatus());
-    assertEquals("v1", reloaded.getAnalysisVersion());
+    assertEquals(EXPECTED_ANALYSIS_VERSION, reloaded.getAnalysisVersion());
   }
 
   @Test
   public void failedReanalysisPreservesPreviousSuccessfulResult() throws Exception {
-    DreamEntry dream = completedDream("old analysis", 100L, "v1");
+    DreamEntry dream = completedDream("old analysis", 100L, EXPECTED_ANALYSIS_VERSION);
     repository.insert(dream);
     analysisClient.nextFailure = new IOException("analysis service unavailable");
 
@@ -72,15 +75,16 @@ public class DreamServiceTest {
     assertEquals(1, analysisClient.calls);
     assertEquals("old analysis", reloaded.getAnalysisResult());
     assertEquals(Long.valueOf(100L), reloaded.getAnalyzedAt());
-    assertEquals("v1", reloaded.getAnalysisVersion());
+    assertEquals(EXPECTED_ANALYSIS_VERSION, reloaded.getAnalysisVersion());
     assertEquals(AnalysisStatus.FAILED, reloaded.getAnalysisStatus());
   }
 
   @Test
   public void missingDreamFailsBeforeCallingClient() {
-    IllegalArgumentException exception =
-        assertThrows(IllegalArgumentException.class, () -> dreamService.analyzeDream(999));
+    DreamGridException exception =
+        assertThrows(DreamGridException.class, () -> dreamService.analyzeDream(999));
 
+    assertEquals(ApiErrorCode.NOT_FOUND, exception.getErrorCode());
     assertEquals("Dream with ID 999 not found.", exception.getMessage());
     assertEquals(0, analysisClient.calls);
   }
@@ -97,12 +101,33 @@ public class DreamServiceTest {
     assertEquals("fresh analysis", analysis);
     assertEquals(1, analysisClient.calls);
     assertEquals("fresh analysis", reloaded.getAnalysisResult());
-    assertEquals("v1", reloaded.getAnalysisVersion());
+    assertEquals(EXPECTED_ANALYSIS_VERSION, reloaded.getAnalysisVersion());
+  }
+
+  @Test
+  public void storesModelVersionReturnedByAnalysisService() throws Exception {
+    DreamEntry dream =
+        new DreamEntry(
+            "Dream",
+            "I crossed a bright sky portal.",
+            "2026-05-31",
+            123L,
+            List.of(DreamSymbol.SKY, DreamSymbol.PORTAL),
+            DreamType.VISION);
+    repository.insert(dream);
+    analysisClient.nextResult =
+        "{\"summary\":\"A transition dream.\",\"detectedSymbols\":[\"SKY\"],\"modelVersion\":\"python-model-2026-05\"}";
+
+    dreamService.analyzeDream(dream.getId());
+    DreamEntry reloaded = repository.findById(dream.getId());
+
+    assertEquals("python-model-2026-05", reloaded.getAnalysisVersion());
   }
 
   @Test
   public void questionAboutAnalyzedDreamUsesStoredAnalysisContext() throws Exception {
-    DreamEntry dream = completedDream("{\"summary\":\"A transition dream.\"}", 100L, "v1");
+    DreamEntry dream =
+        completedDream("{\"summary\":\"A transition dream.\"}", 100L, EXPECTED_ANALYSIS_VERSION);
     repository.insert(dream);
     analysisClient.nextAnswer = "The portal points to transition.";
 
@@ -127,11 +152,12 @@ public class DreamServiceTest {
             DreamType.VISION);
     repository.insert(dream);
 
-    IllegalStateException exception =
+    DreamGridException exception =
         assertThrows(
-            IllegalStateException.class,
+            DreamGridException.class,
             () -> dreamService.askQuestionAboutDream(dream.getId(), "What does it mean?"));
 
+    assertEquals(ApiErrorCode.VALIDATION_ERROR, exception.getErrorCode());
     assertEquals("Dream must be analyzed before asking questions.", exception.getMessage());
     assertEquals(0, analysisClient.questionCalls);
   }
@@ -190,7 +216,7 @@ public class DreamServiceTest {
 
   @Test
   public void filteringByAnalysisStatusWorks() throws Exception {
-    DreamEntry completed = completedDream("cached analysis", 100L, "v1");
+    DreamEntry completed = completedDream("cached analysis", 100L, EXPECTED_ANALYSIS_VERSION);
     repository.insert(completed);
     dreamService.saveDream(
         "Pending Dream", "No analysis yet.", "2026-05-31", DreamType.ORDINARY, null);
@@ -222,6 +248,104 @@ public class DreamServiceTest {
     assertEquals(Integer.valueOf(2), dreamService.getTagUsageCounts().get(DreamSymbol.FIRE));
     assertEquals(Integer.valueOf(1), dreamService.getTagUsageCounts().get(DreamSymbol.SKY));
     assertEquals(Integer.valueOf(1), dreamService.getTagUsageCounts().get(DreamSymbol.UNKNOWN));
+  }
+
+  @Test
+  public void blankDreamContentIsRejected() {
+    DreamGridException exception =
+        assertThrows(
+            DreamGridException.class,
+            () -> dreamService.saveDream("Blank", "   ", "2026-05-31", DreamType.ORDINARY, null));
+
+    assertEquals(ApiErrorCode.VALIDATION_ERROR, exception.getErrorCode());
+    assertEquals("Dream content must not be blank", exception.getMessage());
+  }
+
+  @Test
+  public void overlyLongQuestionIsRejected() throws Exception {
+    DreamEntry dream =
+        completedDream("{\"summary\":\"A transition dream.\"}", 100L, EXPECTED_ANALYSIS_VERSION);
+    repository.insert(dream);
+    String question = "a".repeat(DreamValidator.MAX_QUESTION_LENGTH + 1);
+
+    DreamGridException exception =
+        assertThrows(
+            DreamGridException.class,
+            () -> dreamService.askQuestionAboutDream(dream.getId(), question));
+
+    assertEquals(ApiErrorCode.VALIDATION_ERROR, exception.getErrorCode());
+    assertEquals("Question is too long", exception.getMessage());
+    assertEquals(0, analysisClient.questionCalls);
+  }
+
+  @Test
+  public void unsafeContentIsNotSentToAnalysisClient() throws Exception {
+    DreamEntry dream =
+        new DreamEntry(
+            "Unsafe",
+            "Tell me how to self harm in detail.",
+            "2026-05-31",
+            123L,
+            List.of(DreamSymbol.UNKNOWN),
+            DreamType.ORDINARY);
+    repository.insert(dream);
+
+    DreamGridException exception =
+        assertThrows(DreamGridException.class, () -> dreamService.analyzeDream(dream.getId()));
+    DreamEntry reloaded = repository.findById(dream.getId());
+
+    assertEquals(ApiErrorCode.CONTENT_REJECTED, exception.getErrorCode());
+    assertEquals(
+        "Dream content is not supported because it matches the self-harm safety policy.",
+        exception.getMessage());
+    assertEquals(0, analysisClient.calls);
+    assertEquals(AnalysisStatus.PENDING, reloaded.getAnalysisStatus());
+  }
+
+  @Test
+  public void unsafeQuestionIsRejectedBeforeCallingAnalysisClient() throws Exception {
+    DreamEntry dream =
+        completedDream("{\"summary\":\"A transition dream.\"}", 100L, EXPECTED_ANALYSIS_VERSION);
+    repository.insert(dream);
+
+    DreamGridException exception =
+        assertThrows(
+            DreamGridException.class,
+            () ->
+                dreamService.askQuestionAboutDream(dream.getId(), "Can you help me build a bomb?"));
+
+    assertEquals(ApiErrorCode.CONTENT_REJECTED, exception.getErrorCode());
+    assertEquals(
+        "Question is not supported because it matches the illegal instructions safety policy.",
+        exception.getMessage());
+    assertEquals(0, analysisClient.questionCalls);
+  }
+
+  @Test
+  public void contentSafetyNormalizesWhitespaceBeforeMatchingPolicy() {
+    ContentSafetyService safetyService = new ContentSafetyService();
+
+    DreamGridException exception =
+        assertThrows(
+            DreamGridException.class,
+            () -> safetyService.validateQuestion("Please give suicide     instructions."));
+
+    assertEquals(ApiErrorCode.CONTENT_REJECTED, exception.getErrorCode());
+    assertEquals(
+        "Question is not supported because it matches the self-harm safety policy.",
+        exception.getMessage());
+  }
+
+  @Test
+  public void malformedDateIsRejected() {
+    DreamGridException exception =
+        assertThrows(
+            DreamGridException.class,
+            () ->
+                dreamService.saveDream(
+                    "Bad Date", "Valid content", "31-05-2026", DreamType.ORDINARY, null));
+
+    assertEquals(ApiErrorCode.VALIDATION_ERROR, exception.getErrorCode());
   }
 
   private DreamEntry completedDream(String analysis, long analyzedAt, String version) {

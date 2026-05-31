@@ -1,6 +1,8 @@
 package com.dreamgrid.service;
 
+import com.dreamgrid.api.ApiErrorCode;
 import com.dreamgrid.client.DreamAnalysisClient;
+import com.dreamgrid.config.AppConfig;
 import com.dreamgrid.model.AnalysisStatus;
 import com.dreamgrid.model.DreamEntry;
 import com.dreamgrid.model.DreamSymbol;
@@ -23,31 +25,47 @@ import java.util.Map;
 import java.util.Optional;
 
 public class DreamService {
-  private static final String DEFAULT_ANALYSIS_VERSION = "v1";
-
   private final DreamRepository dreamRepository;
   private final DreamAnalysisClient analysisClient;
-  private final String analysisVersion;
+  private final String expectedAnalysisVersion;
+  private final DreamValidator validator;
+  private final ContentSafetyService contentSafetyService;
   private final Gson gson = new Gson();
 
   public DreamService(Connection connection) {
     this.dreamRepository = new DreamRepository(connection);
-    this.analysisClient = new DreamAnalysisClient();
-    this.analysisVersion = DEFAULT_ANALYSIS_VERSION;
+    AppConfig config = AppConfig.load();
+    this.analysisClient = new DreamAnalysisClient(config);
+    this.expectedAnalysisVersion = config.getAnalysisModelVersion();
+    this.validator = new DreamValidator();
+    this.contentSafetyService = new ContentSafetyService();
   }
 
   public DreamService(DreamRepository dreamRepository, DreamAnalysisClient analysisClient) {
-    this(dreamRepository, analysisClient, DEFAULT_ANALYSIS_VERSION);
+    this(dreamRepository, analysisClient, AppConfig.load().getAnalysisModelVersion());
   }
 
   public DreamService(
       DreamRepository dreamRepository, DreamAnalysisClient analysisClient, String analysisVersion) {
+    this(
+        dreamRepository,
+        analysisClient,
+        analysisVersion,
+        new DreamValidator(),
+        new ContentSafetyService());
+  }
+
+  public DreamService(
+      DreamRepository dreamRepository,
+      DreamAnalysisClient analysisClient,
+      String analysisVersion,
+      DreamValidator validator,
+      ContentSafetyService contentSafetyService) {
     this.dreamRepository = dreamRepository;
     this.analysisClient = analysisClient;
-    this.analysisVersion =
-        analysisVersion != null && !analysisVersion.isBlank()
-            ? analysisVersion
-            : DEFAULT_ANALYSIS_VERSION;
+    this.expectedAnalysisVersion = analysisVersion == null ? "" : analysisVersion.trim();
+    this.validator = validator;
+    this.contentSafetyService = contentSafetyService;
   }
 
   public void addDream(DreamEntry dream) throws SQLException {
@@ -66,6 +84,8 @@ public class DreamService {
       DreamType dreamType,
       List<String> requestedTags)
       throws SQLException {
+    validator.validateDream(title, content, dreamDate);
+    contentSafetyService.validateDreamContent(content);
     long timestamp = System.currentTimeMillis();
     String formattedDate =
         dreamDate != null && !dreamDate.isBlank()
@@ -91,8 +111,11 @@ public class DreamService {
     DreamEntry dream = dreamRepository.findById(dreamId);
 
     if (dream == null) {
-      throw new IllegalArgumentException("Dream with ID " + dreamId + " not found.");
+      throw new DreamGridException(
+          ApiErrorCode.NOT_FOUND, "Dream with ID " + dreamId + " not found.");
     }
+
+    contentSafetyService.validateDreamContent(dream.getContent());
 
     if (!forceReanalysis && hasValidCachedAnalysis(dream)) {
       return dream.getAnalysisResult();
@@ -100,7 +123,8 @@ public class DreamService {
 
     try {
       String analysis = analysisClient.analyzeDream(dream.getContent());
-      dream.completeAnalysis(analysis, System.currentTimeMillis(), analysisVersion);
+      dream.completeAnalysis(
+          analysis, System.currentTimeMillis(), resolveAnalysisVersion(analysis));
       applyDetectedSymbols(dream, analysis);
       dreamRepository.update(dream);
       return analysis;
@@ -163,22 +187,32 @@ public class DreamService {
     DreamEntry dream = dreamRepository.findById(dreamId);
 
     if (dream == null) {
-      throw new IllegalArgumentException("Dream with ID " + dreamId + " not found.");
+      throw new DreamGridException(
+          ApiErrorCode.NOT_FOUND, "Dream with ID " + dreamId + " not found.");
     }
 
-    if (question == null || question.isBlank()) {
-      throw new IllegalArgumentException("Question cannot be empty.");
-    }
+    validator.validateQuestion(question);
+    contentSafetyService.validateDreamContent(dream.getContent());
+    contentSafetyService.validateQuestion(question);
 
     if (!hasCompletedAnalysis(dream)) {
-      throw new IllegalStateException("Dream must be analyzed before asking questions.");
+      throw new DreamGridException(
+          ApiErrorCode.VALIDATION_ERROR, "Dream must be analyzed before asking questions.");
     }
 
     return analysisClient.askQuestion(dream.getContent(), dream.getAnalysisResult(), question);
   }
 
   private boolean hasValidCachedAnalysis(DreamEntry dream) {
-    return hasCompletedAnalysis(dream) && analysisVersion.equals(dream.getAnalysisVersion());
+    if (!hasCompletedAnalysis(dream)) {
+      return false;
+    }
+
+    if (expectedAnalysisVersion.isBlank()) {
+      return true;
+    }
+
+    return expectedAnalysisVersion.equals(dream.getAnalysisVersion());
   }
 
   private boolean hasCompletedAnalysis(DreamEntry dream) {
@@ -191,6 +225,31 @@ public class DreamService {
     List<DreamSymbol> symbols = parseDetectedSymbols(analysis);
     if (!symbols.isEmpty()) {
       dream.setSymbolTags(symbols);
+    }
+  }
+
+  private String resolveAnalysisVersion(String analysis) {
+    String responseVersion = extractModelVersion(analysis);
+    if (responseVersion != null && !responseVersion.isBlank()) {
+      return responseVersion;
+    }
+
+    return expectedAnalysisVersion.isBlank() ? null : expectedAnalysisVersion;
+  }
+
+  private String extractModelVersion(String analysis) {
+    try {
+      JsonObject root = gson.fromJson(analysis, JsonObject.class);
+      if (root == null
+          || !root.has("modelVersion")
+          || !root.get("modelVersion").isJsonPrimitive()) {
+        return null;
+      }
+
+      String modelVersion = root.get("modelVersion").getAsString();
+      return modelVersion == null ? null : modelVersion.trim();
+    } catch (RuntimeException e) {
+      return null;
     }
   }
 
@@ -227,7 +286,7 @@ public class DreamService {
     try {
       return DreamType.valueOf(value.trim().toUpperCase(Locale.ROOT));
     } catch (IllegalArgumentException e) {
-      throw new IllegalArgumentException("Invalid dream type: " + value);
+      throw new DreamGridException(ApiErrorCode.VALIDATION_ERROR, "Invalid dream type: " + value);
     }
   }
 
@@ -239,7 +298,8 @@ public class DreamService {
     try {
       return AnalysisStatus.valueOf(value.trim().toUpperCase(Locale.ROOT));
     } catch (IllegalArgumentException e) {
-      throw new IllegalArgumentException("Invalid analysis status: " + value);
+      throw new DreamGridException(
+          ApiErrorCode.VALIDATION_ERROR, "Invalid analysis status: " + value);
     }
   }
 }

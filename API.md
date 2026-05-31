@@ -32,6 +32,13 @@ Content-Type: application/json
 
 New dreams are stored with `analysisStatus` set to `PENDING`.
 
+Validation rules:
+
+- `title` must not be blank and must be at most 160 characters.
+- `content` must not be blank and must be at most 12,000 characters.
+- `date`, when provided, must use `yyyy-MM-dd` or `yyyy-MM-dd HH:mm:ss`.
+- `type`, when provided, must match a known dream type.
+
 ## Read Dreams
 
 ```http
@@ -92,16 +99,16 @@ Example response:
 POST /dreams/{id}/analyze
 ```
 
-If a completed analysis exists for the current analysis version, the stored result is returned. Otherwise the backend calls the Python service and stores the response.
+If a completed analysis exists and no expected analysis version is configured, the stored result is returned. If `DREAMGRID_ANALYSIS_VERSION` is configured, cached analysis is reused only when the stored version matches that value. New analysis stores the `modelVersion` returned by the Python service.
 
 Example response:
 
 ```json
 {
   "dreamId": 1,
-  "analysis": "{\"summary\":\"A concise interpretation.\",\"detectedSymbols\":[\"SKY\"],\"detectedThemes\":[\"freedom\"],\"confidenceScore\":0.82,\"modelVersion\":\"v1\"}",
+  "analysis": "{\"summary\":\"A concise interpretation.\",\"detectedSymbols\":[\"SKY\"],\"detectedThemes\":[\"freedom\"],\"confidenceScore\":0.82,\"modelVersion\":\"google/flan-t5-small\"}",
   "analyzedAt": 1780250100000,
-  "analysisVersion": "v1",
+  "analysisVersion": "google/flan-t5-small",
   "analysisStatus": "COMPLETED"
 }
 ```
@@ -139,7 +146,9 @@ Example response:
 }
 ```
 
-This endpoint requires a completed analysis. If the dream is not analyzed yet, the API returns `409`.
+This endpoint requires a completed analysis. If the dream is not analyzed yet, the API returns `400`.
+
+Questions must not be blank and must be at most 1,000 characters.
 
 ## Python Analysis Service
 
@@ -159,7 +168,7 @@ POST /ask
   "detectedSymbols": ["SKY"],
   "detectedThemes": ["freedom"],
   "confidenceScore": 0.82,
-  "modelVersion": "v1"
+  "modelVersion": "google/flan-t5-small"
 }
 ```
 
@@ -171,7 +180,17 @@ Known symbols from the model response are normalized into the Java `DreamSymbol`
 
 ```json
 {
-  "statusCode": 400,
+  "error": "VALIDATION_ERROR",
   "message": "Validation message"
 }
 ```
+
+Current error codes:
+
+- `VALIDATION_ERROR`
+- `NOT_FOUND`
+- `ANALYSIS_SERVICE_ERROR`
+- `CONTENT_REJECTED`
+- `INTERNAL_ERROR`
+
+DreamGrid applies a deterministic application-level safety policy before calling the Python analysis service. The policy currently rejects supported categories such as self-harm instructions, illegal instructions, explicit sexual content, graphic violence, and hate or harassment. Rejected content returns `CONTENT_REJECTED` and is not sent to the analysis service.

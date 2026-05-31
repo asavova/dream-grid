@@ -1,5 +1,8 @@
 import com.dreamgrid.api.DreamGridServer;
+import com.dreamgrid.client.DreamAnalysisClient;
+import com.dreamgrid.config.AppConfig;
 import com.dreamgrid.database.DreamDatabase;
+import com.dreamgrid.repository.DreamRepository;
 import com.dreamgrid.service.DreamService;
 import java.io.IOException;
 import java.sql.SQLException;
@@ -8,19 +11,26 @@ import java.util.logging.Logger;
 
 public class Main {
   private static final Logger logger = Logger.getLogger(Main.class.getName());
-  private static final int SERVER_PORT = 8080;
 
   public static void main(String[] args) throws IOException, SQLException {
-    // Bootstrap dependencies
-    DreamDatabase.initialize();
-    DreamService dreamService = new DreamService(DreamDatabase.getConnection());
+    AppConfig config = AppConfig.load();
+    DreamDatabase.initialize(config);
+    DreamService dreamService =
+        new DreamService(
+            new DreamRepository(DreamDatabase.getConnection()),
+            new DreamAnalysisClient(config),
+            config.getAnalysisModelVersion());
 
-    // Start HTTP server
-    DreamGridServer server = new DreamGridServer(SERVER_PORT, dreamService);
+    DreamGridServer server =
+        new DreamGridServer(config.getServerHost(), config.getServerPort(), dreamService);
 
     try {
       server.start();
-      logger.info("DreamGrid REST API server started on http://localhost:" + SERVER_PORT);
+      logger.info(
+          "DreamGrid REST API server started on "
+              + config.getServerHost()
+              + ":"
+              + config.getServerPort());
       logger.info("Press Ctrl+C to stop the server");
 
       // Keep the server running

@@ -1,6 +1,8 @@
 package com.dreamgrid.database;
 
+import com.dreamgrid.config.AppConfig;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -11,15 +13,24 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public class DreamDatabase {
-  private static final String DB_URL = "jdbc:sqlite:data/dreams.db";
+  private static AppConfig config = AppConfig.load();
   private static Connection connection;
   private static final Logger logger = Logger.getLogger(DreamDatabase.class.getName());
 
   public static void initialize() {
+    initialize(AppConfig.load());
+  }
+
+  public static void initialize(AppConfig appConfig) {
     try {
-      Files.createDirectories(Paths.get("data"));
-      connection = DriverManager.getConnection(DB_URL);
-      logger.info("Connected to database: " + DB_URL);
+      config = appConfig;
+      Path databasePath = Paths.get(config.getDatabasePath());
+      Path parent = databasePath.getParent();
+      if (parent != null) {
+        Files.createDirectories(parent);
+      }
+      connection = DriverManager.getConnection(config.getDatabaseUrl());
+      logger.info("Connected to database: " + config.getDatabaseUrl());
 
       try (Statement stmt = connection.createStatement()) {
         String createTableSQL =
@@ -54,7 +65,7 @@ CREATE TABLE IF NOT EXISTS dreams (
 
   public static Connection getConnection() throws SQLException {
     if (connection == null || connection.isClosed()) {
-      connection = DriverManager.getConnection(DB_URL);
+      connection = DriverManager.getConnection(config.getDatabaseUrl());
     }
     return connection;
   }

@@ -9,6 +9,7 @@ import com.dreamgrid.dto.QuestionResponse;
 import com.dreamgrid.dto.TagResponse;
 import com.dreamgrid.model.DreamEntry;
 import com.dreamgrid.model.DreamType;
+import com.dreamgrid.service.DreamGridException;
 import com.dreamgrid.service.DreamService;
 import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
@@ -63,11 +64,13 @@ public class DreamApiHandler implements HttpHandler {
       } else if (path.matches("/dreams/\\d+/questions$") && "POST".equals(method)) {
         handleQuestion(exchange);
       } else {
-        sendError(exchange, 404, "Endpoint not found");
+        sendError(exchange, 404, ApiErrorCode.NOT_FOUND, "Endpoint not found");
       }
+    } catch (DreamGridException e) {
+      sendError(exchange, statusFor(e.getErrorCode()), e.getErrorCode(), e.getMessage());
     } catch (Exception e) {
       logger.log(Level.SEVERE, "Error handling request", e);
-      sendError(exchange, 500, "Internal server error");
+      sendError(exchange, 500, ApiErrorCode.INTERNAL_ERROR, "Internal server error");
     }
   }
 
@@ -84,10 +87,10 @@ public class DreamApiHandler implements HttpHandler {
               queryParams.get("type"), queryParams.get("status"), queryParams.get("tag"));
       sendDreamList(exchange, dreams);
     } catch (IllegalArgumentException e) {
-      sendError(exchange, 400, e.getMessage());
+      sendError(exchange, 400, ApiErrorCode.VALIDATION_ERROR, e.getMessage());
     } catch (SQLException e) {
       logger.log(Level.SEVERE, "Database error listing dreams", e);
-      sendError(exchange, 500, "Database error: " + e.getMessage());
+      sendError(exchange, 500, ApiErrorCode.INTERNAL_ERROR, "Database error: " + e.getMessage());
     }
   }
 
@@ -98,7 +101,7 @@ public class DreamApiHandler implements HttpHandler {
       sendDreamList(exchange, dreams);
     } catch (SQLException e) {
       logger.log(Level.SEVERE, "Database error searching dreams", e);
-      sendError(exchange, 500, "Database error: " + e.getMessage());
+      sendError(exchange, 500, ApiErrorCode.INTERNAL_ERROR, "Database error: " + e.getMessage());
     }
   }
 
@@ -109,7 +112,7 @@ public class DreamApiHandler implements HttpHandler {
       sendDreamList(exchange, dreams);
     } catch (SQLException e) {
       logger.log(Level.SEVERE, "Database error listing dreams by tag", e);
-      sendError(exchange, 500, "Database error: " + e.getMessage());
+      sendError(exchange, 500, ApiErrorCode.INTERNAL_ERROR, "Database error: " + e.getMessage());
     }
   }
 
@@ -122,7 +125,7 @@ public class DreamApiHandler implements HttpHandler {
       sendJsonResponse(exchange, 200, gson.toJson(responses));
     } catch (SQLException e) {
       logger.log(Level.SEVERE, "Database error listing tags", e);
-      sendError(exchange, 500, "Database error: " + e.getMessage());
+      sendError(exchange, 500, ApiErrorCode.INTERNAL_ERROR, "Database error: " + e.getMessage());
     }
   }
 
@@ -130,15 +133,8 @@ public class DreamApiHandler implements HttpHandler {
     try {
       String body = readRequestBody(exchange);
       DreamRequest request = gson.fromJson(body, DreamRequest.class);
-
-      // Validation
-      if (request.getTitle() == null || request.getTitle().isBlank()) {
-        sendError(exchange, 400, "Title cannot be empty");
-        return;
-      }
-
-      if (request.getContent() == null || request.getContent().isBlank()) {
-        sendError(exchange, 400, "Content cannot be empty");
+      if (request == null) {
+        sendError(exchange, 400, ApiErrorCode.VALIDATION_ERROR, "Invalid JSON request body");
         return;
       }
 
@@ -147,7 +143,11 @@ public class DreamApiHandler implements HttpHandler {
         try {
           dreamType = DreamType.valueOf(request.getType().toUpperCase());
         } catch (IllegalArgumentException e) {
-          sendError(exchange, 400, "Invalid dream type: " + request.getType());
+          sendError(
+              exchange,
+              400,
+              ApiErrorCode.VALIDATION_ERROR,
+              "Invalid dream type: " + request.getType());
           return;
         }
       }
@@ -165,10 +165,12 @@ public class DreamApiHandler implements HttpHandler {
       String jsonResponse = gson.toJson(response);
       sendJsonResponse(exchange, 201, jsonResponse);
     } catch (JsonSyntaxException e) {
-      sendError(exchange, 400, "Invalid JSON request body");
+      sendError(exchange, 400, ApiErrorCode.VALIDATION_ERROR, "Invalid JSON request body");
+    } catch (DreamGridException e) {
+      sendError(exchange, statusFor(e.getErrorCode()), e.getErrorCode(), e.getMessage());
     } catch (SQLException e) {
       logger.log(Level.SEVERE, "Database error creating dream", e);
-      sendError(exchange, 500, "Database error: " + e.getMessage());
+      sendError(exchange, 500, ApiErrorCode.INTERNAL_ERROR, "Database error: " + e.getMessage());
     }
   }
 
@@ -178,7 +180,7 @@ public class DreamApiHandler implements HttpHandler {
       DreamEntry dream = dreamService.getDreamById(dreamId);
 
       if (dream == null) {
-        sendError(exchange, 404, "Dream not found");
+        sendError(exchange, 404, ApiErrorCode.NOT_FOUND, "Dream not found");
         return;
       }
 
@@ -188,7 +190,7 @@ public class DreamApiHandler implements HttpHandler {
       sendJsonResponse(exchange, 200, jsonResponse);
     } catch (SQLException e) {
       logger.log(Level.SEVERE, "Database error getting dream", e);
-      sendError(exchange, 500, "Database error: " + e.getMessage());
+      sendError(exchange, 500, ApiErrorCode.INTERNAL_ERROR, "Database error: " + e.getMessage());
     }
   }
 
@@ -199,7 +201,7 @@ public class DreamApiHandler implements HttpHandler {
       DreamEntry dream = dreamService.getDreamById(dreamId);
 
       if (dream == null) {
-        sendError(exchange, 404, "Dream not found");
+        sendError(exchange, 404, ApiErrorCode.NOT_FOUND, "Dream not found");
         return;
       }
 
@@ -220,10 +222,14 @@ public class DreamApiHandler implements HttpHandler {
       sendJsonResponse(exchange, 200, jsonResponse);
     } catch (SQLException e) {
       logger.log(Level.SEVERE, "Database error analyzing dream", e);
-      sendError(exchange, 500, "Database error: " + e.getMessage());
+      sendError(exchange, 500, ApiErrorCode.INTERNAL_ERROR, "Database error: " + e.getMessage());
     } catch (IOException e) {
       logger.log(Level.SEVERE, "API error analyzing dream", e);
-      sendError(exchange, 502, "Analysis API error: " + e.getMessage());
+      sendError(
+          exchange,
+          502,
+          ApiErrorCode.ANALYSIS_SERVICE_ERROR,
+          "Analysis API error: " + e.getMessage());
     }
   }
 
@@ -233,26 +239,24 @@ public class DreamApiHandler implements HttpHandler {
       String body = readRequestBody(exchange);
       QuestionRequest request = gson.fromJson(body, QuestionRequest.class);
 
-      if (request == null || request.getQuestion() == null || request.getQuestion().isBlank()) {
-        sendError(exchange, 400, "Question cannot be empty");
-        return;
-      }
-
-      String answer = dreamService.askQuestionAboutDream(dreamId, request.getQuestion());
-      QuestionResponse response = new QuestionResponse(dreamId, request.getQuestion(), answer);
+      String question = request != null ? request.getQuestion() : null;
+      String answer = dreamService.askQuestionAboutDream(dreamId, question);
+      QuestionResponse response = new QuestionResponse(dreamId, question, answer);
       sendJsonResponse(exchange, 200, gson.toJson(response));
     } catch (JsonSyntaxException e) {
-      sendError(exchange, 400, "Invalid JSON request body");
-    } catch (IllegalArgumentException e) {
-      sendError(exchange, 404, e.getMessage());
-    } catch (IllegalStateException e) {
-      sendError(exchange, 409, e.getMessage());
+      sendError(exchange, 400, ApiErrorCode.VALIDATION_ERROR, "Invalid JSON request body");
+    } catch (DreamGridException e) {
+      sendError(exchange, statusFor(e.getErrorCode()), e.getErrorCode(), e.getMessage());
     } catch (SQLException e) {
       logger.log(Level.SEVERE, "Database error answering dream question", e);
-      sendError(exchange, 500, "Database error: " + e.getMessage());
+      sendError(exchange, 500, ApiErrorCode.INTERNAL_ERROR, "Database error: " + e.getMessage());
     } catch (IOException e) {
       logger.log(Level.SEVERE, "API error answering dream question", e);
-      sendError(exchange, 502, "Analysis API error: " + e.getMessage());
+      sendError(
+          exchange,
+          502,
+          ApiErrorCode.ANALYSIS_SERVICE_ERROR,
+          "Analysis API error: " + e.getMessage());
     }
   }
 
@@ -329,9 +333,21 @@ public class DreamApiHandler implements HttpHandler {
     }
   }
 
-  private void sendError(HttpExchange exchange, int statusCode, String message) throws IOException {
-    ErrorResponse error = new ErrorResponse(statusCode, message);
+  private void sendError(
+      HttpExchange exchange, int statusCode, ApiErrorCode errorCode, String message)
+      throws IOException {
+    ErrorResponse error = new ErrorResponse(errorCode, message);
     String jsonResponse = gson.toJson(error);
     sendJsonResponse(exchange, statusCode, jsonResponse);
+  }
+
+  private int statusFor(ApiErrorCode errorCode) {
+    return switch (errorCode) {
+      case VALIDATION_ERROR -> 400;
+      case CONTENT_REJECTED -> 400;
+      case NOT_FOUND -> 404;
+      case ANALYSIS_SERVICE_ERROR -> 502;
+      case INTERNAL_ERROR -> 500;
+    };
   }
 }

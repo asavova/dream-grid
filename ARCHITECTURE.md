@@ -36,6 +36,8 @@ The Java code is organized by responsibility:
 
 The intended rule is simple: handlers should stay thin, SQL should stay out of services, and Python API details should stay inside the client.
 
+Configuration is loaded once through `AppConfig` and passed into the components that need it. The analysis client receives its base URL and timeouts through constructor injection.
+
 ## Python Analysis Service
 
 The Python service is intentionally small:
@@ -45,7 +47,9 @@ The Python service is intentionally small:
 - `models/analysis_result.py` defines the analysis result shape.
 - `config.py` keeps model and server settings in one place.
 
-The model returns a summary, detected symbols, detected themes, a confidence score, and a model version. Symbols and themes are produced by the model response, not by a Java keyword list.
+The model returns a summary, detected symbols, detected themes, a confidence score, and a model version. Symbols and themes are produced by the model response, not by a Java keyword list. The Java backend stores the returned `modelVersion` as the analysis version. If an expected version is configured, the service uses it only to decide whether a cached analysis is stale.
+
+Input validation and deterministic content safety checks run before persistence or analysis calls. Safety checks are organized by policy category so they can later be replaced or supplemented by provider moderation without moving that responsibility into API handlers or persistence code.
 
 ## Tag and Search Flow
 

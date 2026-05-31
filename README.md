@@ -135,6 +135,18 @@ On macOS/Linux:
 ./gradlew run
 ```
 
+Configuration is read from environment variables:
+
+| Variable | Default |
+| --- | --- |
+| `DREAMGRID_SERVER_HOST` | `0.0.0.0` |
+| `DREAMGRID_SERVER_PORT` | `8080` |
+| `DREAMGRID_ANALYSIS_BASE_URL` | `http://127.0.0.1:5005` |
+| `DREAMGRID_ANALYSIS_VERSION` | unset |
+| `DREAMGRID_DATABASE_PATH` | `data/dreams.db` |
+| `DREAMGRID_CONNECT_TIMEOUT_MS` | `3000` |
+| `DREAMGRID_READ_TIMEOUT_MS` | `30000` |
+
 ## API
 
 The Java API runs on `http://localhost:8080`.
@@ -175,9 +187,12 @@ python -m unittest discover -s python/tests
 ## Notes
 
 - The Java service expects the Python analysis API at `http://127.0.0.1:5005`.
-- The Python model and version are configured in `python/config.py`.
+- The Python model is configured in `python/config.py`. Its `modelVersion` defaults to the configured model name unless `DREAMGRID_ANALYSIS_VERSION` is set.
+- The Java backend stores the `modelVersion` returned by the Python service. If `DREAMGRID_ANALYSIS_VERSION` is set for Java, it is used as an expected cache version for stale-analysis checks.
 - Tags are normalized in the service/model layer, not in API handlers.
 - Analysis symbols and themes come from the model response. The Java backend mirrors known symbols into its existing enum field.
+- Validation limits are currently 160 characters for titles, 12,000 for dream content, and 1,000 for questions.
+- Content safety uses deterministic category rules before analysis calls are made. This is an application-level guard, not a replacement for provider moderation.
 
 ## Roadmap
 

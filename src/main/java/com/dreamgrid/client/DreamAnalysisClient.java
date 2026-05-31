@@ -1,5 +1,6 @@
 package com.dreamgrid.client;
 
+import com.dreamgrid.config.AppConfig;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import java.io.*;
@@ -10,18 +11,36 @@ import java.util.Map;
 
 public class DreamAnalysisClient {
 
-  private static final String HUGGINGFACE_TOKEN = System.getenv("HUGGINGFACE_TOKEN");
-  private static final String ANALYZE_ENDPOINT = "http://127.0.0.1:5005/analyze";
-  private static final String ASK_ENDPOINT = "http://127.0.0.1:5005/ask";
   private final Gson gson = new Gson();
+  private final String analysisServiceBaseUrl;
+  private final int connectTimeoutMs;
+  private final int readTimeoutMs;
+
+  public DreamAnalysisClient() {
+    this(AppConfig.load());
+  }
+
+  public DreamAnalysisClient(AppConfig config) {
+    this(
+        config.getAnalysisServiceBaseUrl(),
+        config.getConnectTimeoutMs(),
+        config.getReadTimeoutMs());
+  }
+
+  public DreamAnalysisClient(
+      String analysisServiceBaseUrl, int connectTimeoutMs, int readTimeoutMs) {
+    this.analysisServiceBaseUrl = trimTrailingSlash(analysisServiceBaseUrl);
+    this.connectTimeoutMs = connectTimeoutMs;
+    this.readTimeoutMs = readTimeoutMs;
+  }
 
   public String analyzeDream(String dream) throws IOException {
-    return postJson(ANALYZE_ENDPOINT, Map.of("dream", dream));
+    return postJson("/analyze", Map.of("dream", dream));
   }
 
   public String askQuestion(String dream, String analysis, String question) throws IOException {
     String response =
-        postJson(ASK_ENDPOINT, Map.of("dream", dream, "analysis", analysis, "question", question));
+        postJson("/ask", Map.of("dream", dream, "analysis", analysis, "question", question));
     JsonObject json = gson.fromJson(response, JsonObject.class);
     if (json != null && json.has("answer") && !json.get("answer").isJsonNull()) {
       return json.get("answer").getAsString();
@@ -29,8 +48,8 @@ public class DreamAnalysisClient {
     return response;
   }
 
-  private String postJson(String endpoint, Map<String, String> payload) throws IOException {
-    URL url = new URL(endpoint);
+  private String postJson(String path, Map<String, String> payload) throws IOException {
+    URL url = new URL(analysisServiceBaseUrl + path);
     HttpURLConnection con = openPostConnection(url);
     String jsonInput = gson.toJson(payload);
 
@@ -59,14 +78,21 @@ public class DreamAnalysisClient {
     return response.toString();
   }
 
-  private static HttpURLConnection openPostConnection(URL url) throws IOException {
+  private HttpURLConnection openPostConnection(URL url) throws IOException {
     HttpURLConnection con = (HttpURLConnection) url.openConnection();
 
     con.setRequestMethod("POST");
     con.setDoOutput(true);
-    con.setRequestProperty("Authorization", "Bearer " + HUGGINGFACE_TOKEN);
-
+    con.setConnectTimeout(connectTimeoutMs);
+    con.setReadTimeout(readTimeoutMs);
     con.setRequestProperty("Content-Type", "application/json");
     return con;
+  }
+
+  private String trimTrailingSlash(String value) {
+    if (value == null || value.isBlank()) {
+      return AppConfig.from(Map.of()).getAnalysisServiceBaseUrl();
+    }
+    return value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
   }
 }
