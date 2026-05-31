@@ -43,11 +43,13 @@ Configuration is loaded once through `AppConfig` and passed into the components 
 The Python service is intentionally small:
 
 - `analysis_api.py` defines Flask endpoints and request validation.
-- `analysis_service.py` builds prompts, calls the model adapter, parses structured responses, and answers follow-up questions.
+- `analysis_service.py` selects the configured backend and exposes the analysis workflow.
+- `backends/rule_based_backend.py` provides deterministic local analysis without ML dependencies.
+- `backends/transformers_backend.py` contains the optional Hugging Face implementation.
 - `models/analysis_result.py` defines the analysis result shape.
 - `config.py` keeps model and server settings in one place.
 
-The model returns a summary, detected symbols, detected themes, a confidence score, and a model version. Symbols and themes are produced by the model response, not by a Java keyword list. The Java backend stores the returned `modelVersion` as the analysis version. If an expected version is configured, the service uses it only to decide whether a cached analysis is stale.
+The analysis backend returns a summary, detected symbols, detected themes, a confidence score, and a model version. The default backend is rule-based so local builds do not require PyTorch or Transformers. The Java backend stores the returned `modelVersion` as the analysis version. If an expected version is configured, the service uses it only to decide whether a cached analysis is stale.
 
 Input validation and deterministic content safety checks run before persistence or analysis calls. Safety checks are organized by policy category so they can later be replaced or supplemented by provider moderation without moving that responsibility into API handlers or persistence code.
 

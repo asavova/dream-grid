@@ -10,7 +10,13 @@ def create_app(analysis_service: DreamAnalysisService = None) -> Flask:
 
     @app.get("/health")
     def health():
-        return jsonify({"status": "ok", "modelVersion": config.MODEL_VERSION})
+        return jsonify(
+            {
+                "status": "ok",
+                "backend": service.backend_name,
+                "modelVersion": service.model_version,
+            }
+        )
 
     @app.post("/analyze")
     def analyze():
@@ -18,9 +24,16 @@ def create_app(analysis_service: DreamAnalysisService = None) -> Flask:
         if not isinstance(payload, dict):
             return jsonify({"error": "Request body must be a JSON object"}), 400
 
-        dream_text = payload.get("dream")
+        dream_text = payload.get("dream") or payload.get("content")
         if not isinstance(dream_text, str) or not dream_text.strip():
-            return jsonify({"error": "Field 'dream' is required and must be a non-empty string"}), 400
+            return (
+                jsonify(
+                    {
+                        "error": "Field 'dream' or 'content' is required and must be a non-empty string"
+                    }
+                ),
+                400,
+            )
 
         try:
             result = service.analyze(dream_text.strip())
@@ -35,12 +48,19 @@ def create_app(analysis_service: DreamAnalysisService = None) -> Flask:
         if not isinstance(payload, dict):
             return jsonify({"error": "Request body must be a JSON object"}), 400
 
-        dream_text = payload.get("dream")
+        dream_text = payload.get("dream") or payload.get("content")
         analysis_result = payload.get("analysis")
         question = payload.get("question")
 
         if not isinstance(dream_text, str) or not dream_text.strip():
-            return jsonify({"error": "Field 'dream' is required and must be a non-empty string"}), 400
+            return (
+                jsonify(
+                    {
+                        "error": "Field 'dream' or 'content' is required and must be a non-empty string"
+                    }
+                ),
+                400,
+            )
         if not isinstance(analysis_result, str) or not analysis_result.strip():
             return jsonify({"error": "Field 'analysis' is required and must be a non-empty string"}), 400
         if not isinstance(question, str) or not question.strip():
@@ -52,7 +72,13 @@ def create_app(analysis_service: DreamAnalysisService = None) -> Flask:
                 analysis_result.strip(),
                 question.strip(),
             )
-            return jsonify({"answer": answer, "modelVersion": config.MODEL_VERSION})
+            return jsonify(
+                {
+                    "answer": answer,
+                    "backend": service.backend_name,
+                    "modelVersion": service.model_version,
+                }
+            )
         except Exception:
             app.logger.exception("Dream question answering failed")
             return jsonify({"error": "Internal question answering failure"}), 500

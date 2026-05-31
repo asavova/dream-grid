@@ -14,6 +14,9 @@ else:
 
 
 class StaticService:
+    backend_name = "test-backend"
+    model_version = "test-version"
+
     def analyze(self, dream_text: str) -> AnalysisResult:
         return AnalysisResult(
             summary="Structured interpretation.",
@@ -28,6 +31,9 @@ class StaticService:
 
 
 class FailingService:
+    backend_name = "failing-backend"
+    model_version = "test-version"
+
     def analyze(self, dream_text: str) -> AnalysisResult:
         raise RuntimeError("model unavailable")
 
@@ -44,11 +50,21 @@ class AnalysisApiTest(unittest.TestCase):
 
         self.assertEqual(200, response.status_code)
         self.assertEqual("ok", response.get_json()["status"])
+        self.assertEqual("test-backend", response.get_json()["backend"])
+        self.assertEqual("test-version", response.get_json()["modelVersion"])
 
     def test_analyze_valid_request(self):
         client = create_app(StaticService()).test_client()
 
         response = client.post("/analyze", json={"dream": "A dream about fire."})
+
+        self.assertEqual(200, response.status_code)
+        self.assertEqual("Structured interpretation.", response.get_json()["summary"])
+
+    def test_analyze_accepts_content_alias(self):
+        client = create_app(StaticService()).test_client()
+
+        response = client.post("/analyze", json={"content": "A dream about fire."})
 
         self.assertEqual(200, response.status_code)
         self.assertEqual("Structured interpretation.", response.get_json()["summary"])
@@ -81,6 +97,20 @@ class AnalysisApiTest(unittest.TestCase):
 
         self.assertEqual(200, response.status_code)
         self.assertEqual("The fire suggests pressure and change.", response.get_json()["answer"])
+        self.assertEqual("test-backend", response.get_json()["backend"])
+
+    def test_ask_invalid_request(self):
+        client = create_app(StaticService()).test_client()
+
+        response = client.post(
+            "/ask",
+            json={
+                "dream": "A dream about fire.",
+                "analysis": '{"summary":"A dream about pressure."}',
+            },
+        )
+
+        self.assertEqual(400, response.status_code)
 
 
 if __name__ == "__main__":

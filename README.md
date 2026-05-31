@@ -44,7 +44,8 @@ Main Java packages:
 Python files live under `python/`:
 
 - `analysis_api.py` - Flask routes
-- `analysis_service.py` - model prompts, response parsing, and question answering
+- `analysis_service.py` - backend selection and analysis workflow
+- `backends/` - rule-based and optional transformer analysis providers
 - `models/analysis_result.py` - structured analysis result
 - `config.py` - model and service settings
 
@@ -65,6 +66,7 @@ src/test/java/com/dreamgrid/service/
 python/
   analysis_api.py
   analysis_service.py
+  backends/
   config.py
   models/
   tests/
@@ -111,6 +113,13 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
+The default analysis backend is rule-based and does not require PyTorch or Transformers. To run the optional transformer backend:
+
+```powershell
+pip install -r requirements-ml.txt
+$env:DREAMGRID_ANALYSIS_BACKEND = "transformers"
+```
+
 On macOS/Linux:
 
 ```bash
@@ -146,6 +155,7 @@ Configuration is read from environment variables:
 | `DREAMGRID_DATABASE_PATH` | `data/dreams.db` |
 | `DREAMGRID_CONNECT_TIMEOUT_MS` | `3000` |
 | `DREAMGRID_READ_TIMEOUT_MS` | `30000` |
+| `DREAMGRID_ANALYSIS_BACKEND` | `rule-based` |
 
 ## API
 
@@ -187,7 +197,8 @@ python -m unittest discover -s python/tests
 ## Notes
 
 - The Java service expects the Python analysis API at `http://127.0.0.1:5005`.
-- The Python model is configured in `python/config.py`. Its `modelVersion` defaults to the configured model name unless `DREAMGRID_ANALYSIS_VERSION` is set.
+- The Python analysis backend is selected with `DREAMGRID_ANALYSIS_BACKEND`. The default `rule-based` backend is deterministic for local builds. The optional `transformers` backend requires `requirements-ml.txt`.
+- The Python `modelVersion` defaults to the selected backend for rule-based analysis or the configured model name for transformer analysis, unless `DREAMGRID_ANALYSIS_VERSION` is set.
 - The Java backend stores the `modelVersion` returned by the Python service. If `DREAMGRID_ANALYSIS_VERSION` is set for Java, it is used as an expected cache version for stale-analysis checks.
 - Tags are normalized in the service/model layer, not in API handlers.
 - Analysis symbols and themes come from the model response. The Java backend mirrors known symbols into its existing enum field.

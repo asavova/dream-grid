@@ -106,9 +106,9 @@ Example response:
 ```json
 {
   "dreamId": 1,
-  "analysis": "{\"summary\":\"A concise interpretation.\",\"detectedSymbols\":[\"SKY\"],\"detectedThemes\":[\"freedom\"],\"confidenceScore\":0.82,\"modelVersion\":\"google/flan-t5-small\"}",
+  "analysis": "{\"summary\":\"A concise interpretation.\",\"detectedSymbols\":[\"SKY\"],\"detectedThemes\":[\"freedom\"],\"confidenceScore\":0.82,\"modelVersion\":\"rule-based\"}",
   "analyzedAt": 1780250100000,
-  "analysisVersion": "google/flan-t5-small",
+  "analysisVersion": "rule-based",
   "analysisStatus": "COMPLETED"
 }
 ```
@@ -160,6 +160,16 @@ POST /analyze
 POST /ask
 ```
 
+`GET /health` returns:
+
+```json
+{
+  "status": "ok",
+  "backend": "rule-based",
+  "modelVersion": "rule-based"
+}
+```
+
 `POST /analyze` returns:
 
 ```json
@@ -168,9 +178,11 @@ POST /ask
   "detectedSymbols": ["SKY"],
   "detectedThemes": ["freedom"],
   "confidenceScore": 0.82,
-  "modelVersion": "google/flan-t5-small"
+  "modelVersion": "rule-based"
 }
 ```
+
+`POST /analyze` and `POST /ask` accept the existing `dream` field. `content` is also accepted as an alias for the dream text.
 
 `confidenceScore` is the model's confidence that the analysis is grounded in the dream text. It is a useful signal, not a guarantee.
 

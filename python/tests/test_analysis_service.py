@@ -1,49 +1,53 @@
+import sys
 import unittest
 from pathlib import Path
-import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from analysis_service import DreamAnalysisService
-
-
-class StaticModel:
-    def generate_text(self, prompt: str) -> str:
-        if "Question:" in prompt:
-            return "The portal points to a transition."
-        return """
-{
-  "summary": "A concise symbolic interpretation.",
-  "detectedSymbols": ["portal", "sky"],
-  "detectedThemes": ["transition", "freedom"],
-  "confidenceScore": 0.82
-}
-"""
+from backends.rule_based_backend import RuleBasedAnalysisBackend
 
 
 class DreamAnalysisServiceTest(unittest.TestCase):
-    def test_analyze_returns_structured_result(self):
-        service = DreamAnalysisService(model_client=StaticModel(), model_version="test-version")
+    def test_rule_based_backend_returns_deterministic_structured_output(self):
+        service = DreamAnalysisService(
+            backend=RuleBasedAnalysisBackend(model_version="test-rule-backend")
+        )
 
-        result = service.analyze("I walked through a portal under a bright sky.")
+        first = service.analyze("I walked through a portal under a bright sky.")
+        second = service.analyze("I walked through a portal under a bright sky.")
 
-        self.assertEqual("A concise symbolic interpretation.", result.summary)
-        self.assertEqual(["portal", "sky"], result.detectedSymbols)
-        self.assertIn("transition", result.detectedThemes)
-        self.assertIn("freedom", result.detectedThemes)
-        self.assertEqual("test-version", result.modelVersion)
-        self.assertEqual(0.82, result.confidenceScore)
+        self.assertEqual(first, second)
+        self.assertIn("sky", first.detectedSymbols)
+        self.assertIn("door", first.detectedSymbols)
+        self.assertIn("transition", first.detectedThemes)
+        self.assertEqual("test-rule-backend", first.modelVersion)
+        self.assertGreater(first.confidenceScore, 0.0)
 
-    def test_answer_question_uses_model_context(self):
-        service = DreamAnalysisService(model_client=StaticModel())
+    def test_default_backend_does_not_import_transformers(self):
+        sys.modules.pop("torch", None)
+        sys.modules.pop("transformers", None)
+
+        service = DreamAnalysisService(backend_name="rule-based")
+        result = service.analyze("A fire burned beside the road.")
+
+        self.assertEqual("rule-based", service.backend_name)
+        self.assertIn("fire", result.detectedSymbols)
+        self.assertNotIn("torch", sys.modules)
+        self.assertNotIn("transformers", sys.modules)
+
+    def test_ask_returns_deterministic_answer_from_selected_backend(self):
+        service = DreamAnalysisService(
+            backend=RuleBasedAnalysisBackend(model_version="test-rule-backend")
+        )
 
         answer = service.answer_question(
             "I walked through a portal.",
             '{"summary":"A transition dream."}',
-            "What does the portal mean?",
+            "What symbols are present?",
         )
 
-        self.assertEqual("The portal points to a transition.", answer)
+        self.assertEqual("The strongest detected symbols are: door.", answer)
 
 
 if __name__ == "__main__":
