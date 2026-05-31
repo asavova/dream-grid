@@ -4,11 +4,13 @@ import com.dreamgrid.api.ApiErrorCode;
 import com.dreamgrid.client.DreamAnalysisClient;
 import com.dreamgrid.config.AppConfig;
 import com.dreamgrid.dto.TagUsage;
+import com.dreamgrid.model.AnalysisRun;
 import com.dreamgrid.model.AnalysisStatus;
 import com.dreamgrid.model.DreamClassification;
 import com.dreamgrid.model.DreamEntry;
 import com.dreamgrid.model.DreamTag;
 import com.dreamgrid.model.TagSource;
+import com.dreamgrid.repository.AnalysisRunRepository;
 import com.dreamgrid.repository.DreamRepository;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
@@ -25,6 +27,7 @@ import java.util.Locale;
 
 public class DreamService {
   private final DreamRepository dreamRepository;
+  private final AnalysisRunRepository analysisRunRepository;
   private final DreamAnalysisClient analysisClient;
   private final String expectedAnalysisVersion;
   private final DreamValidator validator;
@@ -35,6 +38,7 @@ public class DreamService {
 
   public DreamService(Connection connection) {
     this.dreamRepository = new DreamRepository(connection);
+    this.analysisRunRepository = new AnalysisRunRepository(connection);
     AppConfig config = AppConfig.load();
     this.analysisClient = new DreamAnalysisClient(config);
     this.expectedAnalysisVersion = config.getAnalysisModelVersion();
@@ -52,6 +56,7 @@ public class DreamService {
       DreamRepository dreamRepository, DreamAnalysisClient analysisClient, String analysisVersion) {
     this(
         dreamRepository,
+        new AnalysisRunRepository(dreamRepository.getConnection()),
         analysisClient,
         analysisVersion,
         new DreamValidator(),
@@ -62,6 +67,7 @@ public class DreamService {
 
   public DreamService(
       DreamRepository dreamRepository,
+      AnalysisRunRepository analysisRunRepository,
       DreamAnalysisClient analysisClient,
       String analysisVersion,
       DreamValidator validator,
@@ -69,6 +75,7 @@ public class DreamService {
       TagNormalizationService tagNormalizationService,
       DreamClassificationService classificationService) {
     this.dreamRepository = dreamRepository;
+    this.analysisRunRepository = analysisRunRepository;
     this.analysisClient = analysisClient;
     this.expectedAnalysisVersion = analysisVersion == null ? "" : analysisVersion.trim();
     this.validator = validator;
@@ -143,28 +150,54 @@ public class DreamService {
       return dream.getAnalysisResult();
     }
 
+    AnalysisRun run = analysisRunRepository.createPendingRun(dreamId, System.currentTimeMillis());
     try {
       String analysis = analysisClient.analyzeDream(dream.getContent());
-      dream.completeAnalysis(
-          analysis, System.currentTimeMillis(), resolveAnalysisVersion(analysis));
-      dreamRepository.update(dream);
-      dreamRepository.replaceAnalysisTags(dreamId, parseAnalysisTags(analysis));
-      DreamEntry classifiedDream = dreamRepository.findById(dreamId);
-      ClassificationResult result =
-          classificationService.classifyFromAnalysis(classifiedDream, analysis);
-      classificationService.applyInference(classifiedDream, result);
-      ClassificationResult recurring =
-          classificationService.classifyRecurringFromPatterns(classifiedDream);
-      if (recurring != null && classifiedDream.getUserClassification() == null) {
-        classificationService.applyInference(classifiedDream, recurring);
-      }
-      dreamRepository.updateClassificationFields(classifiedDream);
+      long completedAt = System.currentTimeMillis();
+      String analysisVersion = resolveAnalysisVersion(analysis);
+      runInTransaction(
+          () -> {
+            dream.completeAnalysis(analysis, completedAt, analysisVersion);
+            dreamRepository.update(dream);
+            dreamRepository.replaceAnalysisTags(dreamId, parseAnalysisTags(analysis));
+            DreamEntry classifiedDream = dreamRepository.findById(dreamId);
+            ClassificationResult result =
+                classificationService.classifyFromAnalysis(classifiedDream, analysis);
+            classificationService.applyInference(classifiedDream, result);
+            ClassificationResult recurring =
+                classificationService.classifyRecurringFromPatterns(classifiedDream);
+            if (recurring != null && classifiedDream.getUserClassification() == null) {
+              classificationService.applyInference(classifiedDream, recurring);
+            }
+            dreamRepository.updateClassificationFields(classifiedDream);
+            analysisRunRepository.markCompleted(
+                run.getId(), completedAt, analysisVersion, analysis);
+          });
       return analysis;
     } catch (IOException e) {
-      dream.failAnalysis();
-      dreamRepository.updateAnalysisFields(dream);
+      runInTransaction(
+          () -> {
+            dream.failAnalysis();
+            dreamRepository.updateAnalysisFields(dream);
+            analysisRunRepository.markFailed(
+                run.getId(), System.currentTimeMillis(), failureReason(e));
+          });
       throw e;
     }
+  }
+
+  public List<AnalysisRun> getAnalysisHistory(int dreamId) throws SQLException {
+    ensureDreamExists(dreamId);
+    return analysisRunRepository.findByDreamId(dreamId);
+  }
+
+  public AnalysisRun getLatestAnalysisRun(int dreamId) throws SQLException {
+    ensureDreamExists(dreamId);
+    AnalysisRun run = analysisRunRepository.findLatestByDreamId(dreamId);
+    if (run == null) {
+      throw new DreamGridException(ApiErrorCode.NOT_FOUND, "Analysis history not found");
+    }
+    return run;
   }
 
   public List<DreamEntry> getAllDreams() throws SQLException {
@@ -201,6 +234,12 @@ public class DreamService {
 
   public DreamEntry getDreamById(int id) throws SQLException {
     return dreamRepository.findById(id);
+  }
+
+  private void ensureDreamExists(int dreamId) throws SQLException {
+    if (dreamRepository.findById(dreamId) == null) {
+      throw new DreamGridException(ApiErrorCode.NOT_FOUND, "Dream not found");
+    }
   }
 
   public DreamEntry getDreamClassification(int dreamId) throws SQLException {
@@ -356,5 +395,30 @@ public class DreamService {
       throw new DreamGridException(
           ApiErrorCode.VALIDATION_ERROR, "Invalid analysis status: " + value);
     }
+  }
+
+  private void runInTransaction(TransactionWork work) throws SQLException {
+    Connection connection = analysisRunRepository.getConnection();
+    boolean previousAutoCommit = connection.getAutoCommit();
+    try {
+      connection.setAutoCommit(false);
+      work.execute();
+      connection.commit();
+    } catch (SQLException | RuntimeException e) {
+      connection.rollback();
+      throw e;
+    } finally {
+      connection.setAutoCommit(previousAutoCommit);
+    }
+  }
+
+  private String failureReason(IOException e) {
+    String message = e.getMessage();
+    return message == null || message.isBlank() ? e.getClass().getSimpleName() : message;
+  }
+
+  @FunctionalInterface
+  private interface TransactionWork {
+    void execute() throws SQLException;
   }
 }

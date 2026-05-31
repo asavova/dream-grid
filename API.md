@@ -118,6 +118,7 @@ Example response:
 ```
 
 If analysis fails, the status is set to `FAILED`. A previous successful analysis is not deleted.
+Each real analysis attempt is also stored in `analysis_runs`.
 
 ## Force Reanalysis
 
@@ -126,6 +127,32 @@ POST /dreams/{id}/reanalyze
 ```
 
 This bypasses the cache and calls the Python service again.
+
+## Analysis History
+
+```http
+GET /dreams/{id}/analyses
+GET /dreams/{id}/analyses/latest
+```
+
+`GET /dreams/{id}/analyses` returns all stored analysis attempts for the dream, newest first:
+
+```json
+[
+  {
+    "id": 2,
+    "dreamId": 1,
+    "requestedAt": 1780250200000,
+    "completedAt": 1780250201200,
+    "status": "COMPLETED",
+    "analysisVersion": "rule-based",
+    "analysisResult": "{\"summary\":\"A concise interpretation.\"}",
+    "failureReason": null
+  }
+]
+```
+
+`GET /dreams/{id}/analyses/latest` returns the most recent analysis run. Failed runs are included in history with `status` set to `FAILED` and `failureReason` populated. The latest successful analysis snapshot remains on the dream row for backward compatibility.
 
 ## Ask a Question
 

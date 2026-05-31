@@ -6,6 +6,7 @@ import static org.junit.Assert.assertTrue;
 
 import com.dreamgrid.api.ApiErrorCode;
 import com.dreamgrid.client.DreamAnalysisClient;
+import com.dreamgrid.model.AnalysisRun;
 import com.dreamgrid.model.AnalysisStatus;
 import com.dreamgrid.model.ClassificationSource;
 import com.dreamgrid.model.DreamClassification;
@@ -123,6 +124,96 @@ public class DreamServiceTest {
     DreamEntry reloaded = repository.findById(dream.getId());
 
     assertEquals("python-model-2026-05", reloaded.getAnalysisVersion());
+  }
+
+  @Test
+  public void firstSuccessfulAnalyzeCreatesCompletedRun() throws Exception {
+    DreamEntry dream =
+        dreamService.saveDream(
+            "Run History",
+            "I crossed a bright sky portal.",
+            "2026-05-31",
+            DreamClassification.NEUTRAL,
+            null);
+    analysisClient.nextResult =
+        "{\"summary\":\"A transition dream.\",\"modelVersion\":\"history-v1\"}";
+
+    dreamService.analyzeDream(dream.getId());
+    List<AnalysisRun> runs = dreamService.getAnalysisHistory(dream.getId());
+
+    assertEquals(1, runs.size());
+    assertEquals(AnalysisStatus.COMPLETED, runs.get(0).getStatus());
+    assertEquals("history-v1", runs.get(0).getAnalysisVersion());
+    assertEquals(analysisClient.nextResult, runs.get(0).getAnalysisResult());
+  }
+
+  @Test
+  public void reanalysisAppendsNewRun() throws Exception {
+    DreamEntry dream =
+        dreamService.saveDream(
+            "Run History",
+            "I crossed a bright sky portal.",
+            "2026-05-31",
+            DreamClassification.NEUTRAL,
+            null);
+    analysisClient.nextResult = "{\"summary\":\"first\",\"modelVersion\":\"v1\"}";
+    dreamService.analyzeDream(dream.getId());
+
+    analysisClient.nextResult = "{\"summary\":\"second\",\"modelVersion\":\"v2\"}";
+    dreamService.reanalyzeDream(dream.getId());
+    List<AnalysisRun> runs = dreamService.getAnalysisHistory(dream.getId());
+
+    assertEquals(2, runs.size());
+    assertEquals(
+        "{\"summary\":\"second\",\"modelVersion\":\"v2\"}", runs.get(0).getAnalysisResult());
+    assertEquals(
+        "{\"summary\":\"first\",\"modelVersion\":\"v1\"}", runs.get(1).getAnalysisResult());
+  }
+
+  @Test
+  public void failedReanalysisCreatesFailedRunAndPreservesLatestSnapshot() throws Exception {
+    DreamEntry dream = completedDream("old analysis", 100L, EXPECTED_ANALYSIS_VERSION);
+    repository.insert(dream);
+    analysisClient.nextFailure = new IOException("analysis service unavailable");
+
+    assertThrows(IOException.class, () -> dreamService.reanalyzeDream(dream.getId()));
+    DreamEntry reloaded = repository.findById(dream.getId());
+    List<AnalysisRun> runs = dreamService.getAnalysisHistory(dream.getId());
+
+    assertEquals("old analysis", reloaded.getAnalysisResult());
+    assertEquals(Long.valueOf(100L), reloaded.getAnalyzedAt());
+    assertEquals(1, runs.size());
+    assertEquals(AnalysisStatus.FAILED, runs.get(0).getStatus());
+    assertEquals("analysis service unavailable", runs.get(0).getFailureReason());
+  }
+
+  @Test
+  public void latestAnalysisRunReturnsMostRecentRecord() throws Exception {
+    DreamEntry dream =
+        dreamService.saveDream(
+            "Run History",
+            "I crossed a bright sky portal.",
+            "2026-05-31",
+            DreamClassification.NEUTRAL,
+            null);
+    analysisClient.nextResult = "{\"summary\":\"first\",\"modelVersion\":\"v1\"}";
+    dreamService.analyzeDream(dream.getId());
+    analysisClient.nextResult = "{\"summary\":\"second\",\"modelVersion\":\"v2\"}";
+    dreamService.reanalyzeDream(dream.getId());
+
+    AnalysisRun latest = dreamService.getLatestAnalysisRun(dream.getId());
+
+    assertEquals(AnalysisStatus.COMPLETED, latest.getStatus());
+    assertEquals("v2", latest.getAnalysisVersion());
+    assertEquals("{\"summary\":\"second\",\"modelVersion\":\"v2\"}", latest.getAnalysisResult());
+  }
+
+  @Test
+  public void missingDreamAnalysisHistoryReturnsNotFound() {
+    DreamGridException exception =
+        assertThrows(DreamGridException.class, () -> dreamService.getAnalysisHistory(999));
+
+    assertEquals(ApiErrorCode.NOT_FOUND, exception.getErrorCode());
   }
 
   @Test
@@ -683,6 +774,20 @@ CREATE TABLE dream_tag_links (
     PRIMARY KEY (dream_id, tag_id, source),
     FOREIGN KEY (dream_id) REFERENCES dreams(id) ON DELETE CASCADE,
     FOREIGN KEY (tag_id) REFERENCES dream_tags(id) ON DELETE CASCADE
+);
+""");
+      stmt.execute(
+          """
+CREATE TABLE analysis_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dream_id INTEGER NOT NULL,
+    requested_at INTEGER NOT NULL,
+    completed_at INTEGER,
+    status TEXT NOT NULL,
+    analysis_version TEXT,
+    analysis_result TEXT,
+    failure_reason TEXT,
+    FOREIGN KEY (dream_id) REFERENCES dreams(id) ON DELETE CASCADE
 );
 """);
     }

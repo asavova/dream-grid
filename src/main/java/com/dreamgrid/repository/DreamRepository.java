@@ -18,6 +18,10 @@ public class DreamRepository {
     this.connection = connection;
   }
 
+  public Connection getConnection() {
+    return connection;
+  }
+
   public void insert(DreamEntry entry) throws SQLException {
     String sql =
         """
@@ -245,6 +249,14 @@ ORDER BY usage_count DESC, t.normalized_name ASC
   public void deleteById(int id) throws SQLException {
     try (PreparedStatement stmt = connection.prepareStatement("DELETE FROM dreams WHERE id = ?")) {
       stmt.setInt(1, id);
+      stmt.executeUpdate();
+    }
+  }
+
+  public void deleteUnlinkedTags() throws SQLException {
+    try (PreparedStatement stmt =
+        connection.prepareStatement(
+            "DELETE FROM dream_tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM dream_tag_links)")) {
       stmt.executeUpdate();
     }
   }

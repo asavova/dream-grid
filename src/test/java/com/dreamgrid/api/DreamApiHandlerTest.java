@@ -133,6 +133,30 @@ public class DreamApiHandlerTest {
     assertEquals("NOT_FOUND", body.get("error").getAsString());
   }
 
+  @Test
+  public void latestAnalysisHistoryEndpointReturnsLatestRun() throws Exception {
+    dreamService.saveDream(
+        "Dream", "A quiet dream.", "2026-05-31", DreamClassification.UNKNOWN, List.of("quiet"));
+
+    post("/dreams/1/analyze", "");
+    Response response = get("/dreams/1/analyses/latest");
+    JsonObject body = JsonParser.parseString(response.body()).getAsJsonObject();
+
+    assertEquals(200, response.statusCode());
+    assertEquals(1, body.get("dreamId").getAsInt());
+    assertEquals("COMPLETED", body.get("status").getAsString());
+    assertEquals("{\"summary\":\"ok\"}", body.get("analysisResult").getAsString());
+  }
+
+  @Test
+  public void missingDreamAnalysisHistoryReturnsNotFound() throws Exception {
+    Response response = get("/dreams/999/analyses");
+    JsonObject body = JsonParser.parseString(response.body()).getAsJsonObject();
+
+    assertEquals(404, response.statusCode());
+    assertEquals("NOT_FOUND", body.get("error").getAsString());
+  }
+
   private Response get(String path) throws Exception {
     HttpURLConnection connection = (HttpURLConnection) new URL(baseUrl + path).openConnection();
     connection.setRequestMethod("GET");
@@ -222,6 +246,20 @@ CREATE TABLE dream_tag_links (
     PRIMARY KEY (dream_id, tag_id, source),
     FOREIGN KEY (dream_id) REFERENCES dreams(id) ON DELETE CASCADE,
     FOREIGN KEY (tag_id) REFERENCES dream_tags(id) ON DELETE CASCADE
+);
+""");
+      stmt.execute(
+          """
+CREATE TABLE analysis_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dream_id INTEGER NOT NULL,
+    requested_at INTEGER NOT NULL,
+    completed_at INTEGER,
+    status TEXT NOT NULL,
+    analysis_version TEXT,
+    analysis_result TEXT,
+    failure_reason TEXT,
+    FOREIGN KEY (dream_id) REFERENCES dreams(id) ON DELETE CASCADE
 );
 """);
     }

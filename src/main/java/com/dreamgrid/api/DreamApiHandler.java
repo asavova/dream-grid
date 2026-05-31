@@ -1,6 +1,7 @@
 package com.dreamgrid.api;
 
 import com.dreamgrid.dto.AnalysisResponse;
+import com.dreamgrid.dto.AnalysisRunResponse;
 import com.dreamgrid.dto.DreamClassificationResponse;
 import com.dreamgrid.dto.DreamRequest;
 import com.dreamgrid.dto.DreamResponse;
@@ -9,6 +10,7 @@ import com.dreamgrid.dto.QuestionRequest;
 import com.dreamgrid.dto.QuestionResponse;
 import com.dreamgrid.dto.TagResponse;
 import com.dreamgrid.dto.UpdateDreamClassificationRequest;
+import com.dreamgrid.model.AnalysisRun;
 import com.dreamgrid.model.DreamClassification;
 import com.dreamgrid.model.DreamEntry;
 import com.dreamgrid.service.DreamGridException;
@@ -63,6 +65,10 @@ public class DreamApiHandler implements HttpHandler {
         handleUpdateClassification(exchange);
       } else if (path.matches("/dreams/\\d+/classification/override$") && "DELETE".equals(method)) {
         handleClearClassificationOverride(exchange);
+      } else if (path.matches("/dreams/\\d+/analyses/latest$") && "GET".equals(method)) {
+        handleLatestAnalysisRun(exchange);
+      } else if (path.matches("/dreams/\\d+/analyses$") && "GET".equals(method)) {
+        handleAnalysisHistory(exchange);
       } else if (path.matches("/dreams/\\d+$") && "GET".equals(method)) {
         handleGetDream(exchange);
       } else if (path.matches("/dreams/\\d+/analyze$") && "POST".equals(method)) {
@@ -249,6 +255,33 @@ public class DreamApiHandler implements HttpHandler {
     }
   }
 
+  private void handleAnalysisHistory(HttpExchange exchange) throws IOException {
+    try {
+      int dreamId = extractDreamId(exchange.getRequestURI().getPath());
+      List<AnalysisRunResponse> responses =
+          dreamService.getAnalysisHistory(dreamId).stream()
+              .map(this::toAnalysisRunResponse)
+              .collect(Collectors.toList());
+      sendJsonResponse(exchange, 200, gson.toJson(responses));
+    } catch (SQLException e) {
+      logger.log(Level.SEVERE, "Database error getting analysis history", e);
+      sendError(exchange, 500, ApiErrorCode.INTERNAL_ERROR, "Database error: " + e.getMessage());
+    }
+  }
+
+  private void handleLatestAnalysisRun(HttpExchange exchange) throws IOException {
+    try {
+      int dreamId = extractDreamId(exchange.getRequestURI().getPath());
+      sendJsonResponse(
+          exchange,
+          200,
+          gson.toJson(toAnalysisRunResponse(dreamService.getLatestAnalysisRun(dreamId))));
+    } catch (SQLException e) {
+      logger.log(Level.SEVERE, "Database error getting latest analysis run", e);
+      sendError(exchange, 500, ApiErrorCode.INTERNAL_ERROR, "Database error: " + e.getMessage());
+    }
+  }
+
   private void handleAnalyzeDream(HttpExchange exchange, boolean forceReanalysis)
       throws IOException {
     try {
@@ -354,6 +387,18 @@ public class DreamApiHandler implements HttpHandler {
         dream.getClassificationSource(),
         dream.getClassificationReason(),
         dream.getClassificationUpdatedAt());
+  }
+
+  private AnalysisRunResponse toAnalysisRunResponse(AnalysisRun run) {
+    return new AnalysisRunResponse(
+        run.getId(),
+        run.getDreamId(),
+        run.getRequestedAt(),
+        run.getCompletedAt(),
+        run.getStatus(),
+        run.getAnalysisVersion(),
+        run.getAnalysisResult(),
+        run.getFailureReason());
   }
 
   private String readRequestBody(HttpExchange exchange) throws IOException {

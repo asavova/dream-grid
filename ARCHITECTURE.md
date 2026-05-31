@@ -92,11 +92,12 @@ User overrides do not delete inferred classification. Reanalysis can update infe
 1. A dream is created with `PENDING` analysis status.
 2. `POST /dreams/{id}/analyze` loads the dream.
 3. If a valid completed analysis already exists, the stored result is returned.
-4. Otherwise the Java client calls the Python service.
-5. The response is stored with `COMPLETED` status, timestamp, and version.
-6. Analysis symbols and themes are stored as analysis-generated tags.
-7. Classification inference runs from the analysis result and stored tags.
-8. If the Python call fails, the status becomes `FAILED` and the previous successful result is kept.
+4. A pending row is created in `analysis_runs` for the attempt.
+5. The Java client calls the Python service.
+6. On success, the run is marked `COMPLETED` and the latest analysis snapshot on the dream row is updated in the same local transaction.
+7. Analysis symbols and themes are stored as analysis-generated tags.
+8. Classification inference runs from the analysis result and stored tags.
+9. If the Python call fails, the run is marked `FAILED`, the failure reason is stored, the dream status becomes `FAILED`, and the previous successful result is kept.
 
 `POST /dreams/{id}/reanalyze` skips the cache and always calls the Python service.
 
@@ -112,6 +113,18 @@ Dreams are stored in SQLite in the `dreams` table. Analysis data currently lives
 - `analyzed_at`
 - `analysis_version`
 - `analysis_status`
+
+Every real analysis attempt is also stored in `analysis_runs`:
+
+- `dream_id`
+- `requested_at`
+- `completed_at`
+- `status`
+- `analysis_version`
+- `analysis_result`
+- `failure_reason`
+
+The latest fields on `dreams` are kept for current API compatibility. The history table keeps completed and failed attempts so reanalysis behavior can be audited without overwriting prior runs.
 
 Classification state:
 

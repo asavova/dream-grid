@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS dreams (
         stmt.execute(createTableSQL);
         migrateDreamsTable(stmt);
         createTagTables(stmt);
+        createAnalysisRunTable(stmt);
         migrateLegacySymbolTags(stmt);
         logger.info("Dreams table ensured.");
       }
@@ -144,6 +145,23 @@ CREATE TABLE IF NOT EXISTS dream_tag_links (
     PRIMARY KEY (dream_id, tag_id, source),
     FOREIGN KEY (dream_id) REFERENCES dreams(id) ON DELETE CASCADE,
     FOREIGN KEY (tag_id) REFERENCES dream_tags(id) ON DELETE CASCADE
+);
+""");
+  }
+
+  private static void createAnalysisRunTable(Statement stmt) throws SQLException {
+    stmt.execute(
+        """
+CREATE TABLE IF NOT EXISTS analysis_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dream_id INTEGER NOT NULL,
+    requested_at INTEGER NOT NULL,
+    completed_at INTEGER,
+    status TEXT NOT NULL,
+    analysis_version TEXT,
+    analysis_result TEXT,
+    failure_reason TEXT,
+    FOREIGN KEY (dream_id) REFERENCES dreams(id) ON DELETE CASCADE
 );
 """);
   }
