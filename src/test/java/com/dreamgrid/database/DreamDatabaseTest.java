@@ -7,6 +7,7 @@ import com.dreamgrid.config.AppConfig;
 import com.dreamgrid.model.DreamTag;
 import com.dreamgrid.model.TagSource;
 import com.dreamgrid.repository.DreamRepository;
+import com.dreamgrid.testsupport.TestSchema;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.Connection;
@@ -60,19 +61,7 @@ public class DreamDatabaseTest {
   private void createLegacyDatabase(Path databasePath) throws Exception {
     try (Connection connection = DriverManager.getConnection("jdbc:sqlite:" + databasePath);
         Statement stmt = connection.createStatement()) {
-      stmt.execute(
-          """
-CREATE TABLE dreams (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT NOT NULL,
-    content TEXT NOT NULL,
-    dream_date TEXT,
-    timestamp INTEGER,
-    symbol_tags TEXT,
-    dream_type TEXT,
-    analyzed INTEGER DEFAULT 0
-);
-""");
+      TestSchema.createLegacyDreamsOnlySchema(connection);
       stmt.executeUpdate(
           """
 INSERT INTO dreams (title, content, dream_date, timestamp, symbol_tags, dream_type, analyzed)
