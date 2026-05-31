@@ -7,7 +7,7 @@ The project is intentionally split into plain layers so the core behavior is eas
 ## What It Does
 
 - Stores dream entries in SQLite
-- Extracts basic symbolic tags from dream text
+- Uses the Python model to return detected symbols and themes as part of the analysis
 - Sends dream content to a local Python analysis service
 - Persists analysis results with status, timestamp, and version metadata
 - Reuses cached analysis when the stored result is still valid
@@ -45,7 +45,7 @@ The main Java packages are:
 The Python service is under `python/`:
 
 - `analysis_api.py` - Flask routes and request validation
-- `analysis_service.py` - model interaction, symbol detection, and theme detection
+- `analysis_service.py` - model prompts, structured analysis parsing, and question answering
 - `models/analysis_result.py` - typed analysis response model
 - `config.py` - service and model configuration
 
@@ -159,6 +159,21 @@ POST /dreams/{id}/reanalyze
 
 This always calls the Python analysis service. On success, the previous analysis is replaced. On failure, the old successful result is kept and the status is set to `FAILED`.
 
+### Ask a Question About a Dream
+
+```http
+POST /dreams/{id}/questions
+Content-Type: application/json
+```
+
+```json
+{
+  "question": "What does the portal represent in this dream?"
+}
+```
+
+This endpoint requires the dream to have a completed analysis. The Java service sends the dream text, stored analysis, and question to the Python service.
+
 ## Python Analysis Service
 
 The Python service exposes:
@@ -166,6 +181,7 @@ The Python service exposes:
 ```http
 GET /health
 POST /analyze
+POST /ask
 ```
 
 `POST /analyze` accepts:
@@ -189,6 +205,10 @@ It returns structured analysis data:
 ```
 
 The Java service stores the Python response as the dream analysis result.
+
+`confidenceScore` is a bounded value between `0.0` and `1.0`. It is not a mathematical certainty. It represents how confident the analysis model says it is that the summary, symbols, and themes are grounded in the provided dream text. If the model omits the score, the service falls back to a conservative score based on whether the structured fields are present.
+
+Symbols and themes are produced by the model in the `/analyze` response. They are not generated from a hardcoded keyword list. The Java service mirrors model-detected symbols into the existing `symbolTags` field only when they match a known `DreamSymbol` enum value.
 
 ## Running Locally
 

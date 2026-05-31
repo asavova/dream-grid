@@ -345,6 +345,14 @@ Start the Python analysis service with:
 python python/analysis_api.py
 ```
 
+### Ask a question about an analyzed dream
+
+```bash
+curl -X POST http://localhost:8080/dreams/1/questions \
+  -H "Content-Type: application/json" \
+  -d '{"question": "What does the portal represent?"}'
+```
+
 ## Error Response Format
 
 All error responses follow this format:

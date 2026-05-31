@@ -23,9 +23,15 @@ class StaticService:
             modelVersion="test-version",
         )
 
+    def answer_question(self, dream_text: str, analysis_result: str, question: str) -> str:
+        return "The fire suggests pressure and change."
+
 
 class FailingService:
     def analyze(self, dream_text: str) -> AnalysisResult:
+        raise RuntimeError("model unavailable")
+
+    def answer_question(self, dream_text: str, analysis_result: str, question: str) -> str:
         raise RuntimeError("model unavailable")
 
 
@@ -60,6 +66,21 @@ class AnalysisApiTest(unittest.TestCase):
         response = client.post("/analyze", json={"dream": "A dream about fire."})
 
         self.assertEqual(500, response.status_code)
+
+    def test_ask_valid_request(self):
+        client = create_app(StaticService()).test_client()
+
+        response = client.post(
+            "/ask",
+            json={
+                "dream": "A dream about fire.",
+                "analysis": '{"summary":"A dream about pressure."}',
+                "question": "What does the fire mean?",
+            },
+        )
+
+        self.assertEqual(200, response.status_code)
+        self.assertEqual("The fire suggests pressure and change.", response.get_json()["answer"])
 
 
 if __name__ == "__main__":

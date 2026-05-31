@@ -8,8 +8,17 @@ from analysis_service import DreamAnalysisService
 
 
 class StaticModel:
-    def generate_summary(self, dream_text: str) -> str:
-        return "A concise symbolic interpretation."
+    def generate_text(self, prompt: str) -> str:
+        if "Question:" in prompt:
+            return "The portal points to a transition."
+        return """
+{
+  "summary": "A concise symbolic interpretation.",
+  "detectedSymbols": ["portal", "sky"],
+  "detectedThemes": ["transition", "freedom"],
+  "confidenceScore": 0.82
+}
+"""
 
 
 class DreamAnalysisServiceTest(unittest.TestCase):
@@ -19,18 +28,22 @@ class DreamAnalysisServiceTest(unittest.TestCase):
         result = service.analyze("I walked through a portal under a bright sky.")
 
         self.assertEqual("A concise symbolic interpretation.", result.summary)
-        self.assertEqual(["PORTAL", "SKY"], result.detectedSymbols)
+        self.assertEqual(["portal", "sky"], result.detectedSymbols)
         self.assertIn("transition", result.detectedThemes)
         self.assertIn("freedom", result.detectedThemes)
         self.assertEqual("test-version", result.modelVersion)
-        self.assertGreater(result.confidenceScore, 0)
+        self.assertEqual(0.82, result.confidenceScore)
 
-    def test_unknown_symbol_when_no_keywords_match(self):
+    def test_answer_question_uses_model_context(self):
         service = DreamAnalysisService(model_client=StaticModel())
 
-        result = service.analyze("I sat in a quiet room.")
+        answer = service.answer_question(
+            "I walked through a portal.",
+            '{"summary":"A transition dream."}',
+            "What does the portal mean?",
+        )
 
-        self.assertEqual(["UNKNOWN"], result.detectedSymbols)
+        self.assertEqual("The portal points to a transition.", answer)
 
 
 if __name__ == "__main__":

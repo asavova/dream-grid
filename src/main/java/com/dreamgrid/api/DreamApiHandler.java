@@ -4,6 +4,8 @@ import com.dreamgrid.dto.AnalysisResponse;
 import com.dreamgrid.dto.DreamRequest;
 import com.dreamgrid.dto.DreamResponse;
 import com.dreamgrid.dto.ErrorResponse;
+import com.dreamgrid.dto.QuestionRequest;
+import com.dreamgrid.dto.QuestionResponse;
 import com.dreamgrid.model.DreamEntry;
 import com.dreamgrid.model.DreamType;
 import com.dreamgrid.service.DreamService;
@@ -48,6 +50,8 @@ public class DreamApiHandler implements HttpHandler {
         handleAnalyzeDream(exchange, false);
       } else if (path.matches("/dreams/\\d+/reanalyze$") && "POST".equals(method)) {
         handleAnalyzeDream(exchange, true);
+      } else if (path.matches("/dreams/\\d+/questions$") && "POST".equals(method)) {
+        handleQuestion(exchange);
       } else {
         sendError(exchange, 404, "Endpoint not found");
       }
@@ -169,6 +173,35 @@ public class DreamApiHandler implements HttpHandler {
       sendError(exchange, 500, "Database error: " + e.getMessage());
     } catch (IOException e) {
       logger.log(Level.SEVERE, "API error analyzing dream", e);
+      sendError(exchange, 502, "Analysis API error: " + e.getMessage());
+    }
+  }
+
+  private void handleQuestion(HttpExchange exchange) throws IOException {
+    try {
+      int dreamId = extractDreamId(exchange.getRequestURI().getPath());
+      String body = readRequestBody(exchange);
+      QuestionRequest request = gson.fromJson(body, QuestionRequest.class);
+
+      if (request == null || request.getQuestion() == null || request.getQuestion().isBlank()) {
+        sendError(exchange, 400, "Question cannot be empty");
+        return;
+      }
+
+      String answer = dreamService.askQuestionAboutDream(dreamId, request.getQuestion());
+      QuestionResponse response = new QuestionResponse(dreamId, request.getQuestion(), answer);
+      sendJsonResponse(exchange, 200, gson.toJson(response));
+    } catch (JsonSyntaxException e) {
+      sendError(exchange, 400, "Invalid JSON request body");
+    } catch (IllegalArgumentException e) {
+      sendError(exchange, 404, e.getMessage());
+    } catch (IllegalStateException e) {
+      sendError(exchange, 409, e.getMessage());
+    } catch (SQLException e) {
+      logger.log(Level.SEVERE, "Database error answering dream question", e);
+      sendError(exchange, 500, "Database error: " + e.getMessage());
+    } catch (IOException e) {
+      logger.log(Level.SEVERE, "API error answering dream question", e);
       sendError(exchange, 502, "Analysis API error: " + e.getMessage());
     }
   }

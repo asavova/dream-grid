@@ -99,6 +99,42 @@ public class DreamServiceTest {
     assertEquals("v1", reloaded.getAnalysisVersion());
   }
 
+  @Test
+  public void questionAboutAnalyzedDreamUsesStoredAnalysisContext() throws Exception {
+    DreamEntry dream = completedDream("{\"summary\":\"A transition dream.\"}", 100L, "v1");
+    repository.insert(dream);
+    analysisClient.nextAnswer = "The portal points to transition.";
+
+    String answer = dreamService.askQuestionAboutDream(dream.getId(), "What does the portal mean?");
+
+    assertEquals("The portal points to transition.", answer);
+    assertEquals(1, analysisClient.questionCalls);
+    assertEquals("I crossed a bright sky portal.", analysisClient.lastQuestionDream);
+    assertEquals("{\"summary\":\"A transition dream.\"}", analysisClient.lastQuestionAnalysis);
+    assertEquals("What does the portal mean?", analysisClient.lastQuestion);
+  }
+
+  @Test
+  public void questionBeforeAnalysisFailsCleanly() throws Exception {
+    DreamEntry dream =
+        new DreamEntry(
+            "Dream",
+            "I crossed a bright sky portal.",
+            "2026-05-31",
+            123L,
+            List.of(DreamSymbol.SKY, DreamSymbol.PORTAL),
+            DreamType.VISION);
+    repository.insert(dream);
+
+    IllegalStateException exception =
+        assertThrows(
+            IllegalStateException.class,
+            () -> dreamService.askQuestionAboutDream(dream.getId(), "What does it mean?"));
+
+    assertEquals("Dream must be analyzed before asking questions.", exception.getMessage());
+    assertEquals(0, analysisClient.questionCalls);
+  }
+
   private DreamEntry completedDream(String analysis, long analyzedAt, String version) {
     DreamEntry dream =
         new DreamEntry(
@@ -136,7 +172,12 @@ CREATE TABLE dreams (
 
   private static class FakeAnalysisClient extends DreamAnalysisClient {
     private int calls;
+    private int questionCalls;
     private String nextResult = "generated analysis";
+    private String nextAnswer = "generated answer";
+    private String lastQuestionDream;
+    private String lastQuestionAnalysis;
+    private String lastQuestion;
     private IOException nextFailure;
 
     @Override
@@ -146,6 +187,15 @@ CREATE TABLE dreams (
         throw nextFailure;
       }
       return nextResult;
+    }
+
+    @Override
+    public String askQuestion(String dream, String analysis, String question) throws IOException {
+      questionCalls++;
+      lastQuestionDream = dream;
+      lastQuestionAnalysis = analysis;
+      lastQuestion = question;
+      return nextAnswer;
     }
   }
 }

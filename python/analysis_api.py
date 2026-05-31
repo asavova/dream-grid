@@ -29,6 +29,34 @@ def create_app(analysis_service: DreamAnalysisService = None) -> Flask:
             app.logger.exception("Dream analysis failed")
             return jsonify({"error": "Internal analysis failure"}), 500
 
+    @app.post("/ask")
+    def ask():
+        payload = request.get_json(silent=True)
+        if not isinstance(payload, dict):
+            return jsonify({"error": "Request body must be a JSON object"}), 400
+
+        dream_text = payload.get("dream")
+        analysis_result = payload.get("analysis")
+        question = payload.get("question")
+
+        if not isinstance(dream_text, str) or not dream_text.strip():
+            return jsonify({"error": "Field 'dream' is required and must be a non-empty string"}), 400
+        if not isinstance(analysis_result, str) or not analysis_result.strip():
+            return jsonify({"error": "Field 'analysis' is required and must be a non-empty string"}), 400
+        if not isinstance(question, str) or not question.strip():
+            return jsonify({"error": "Field 'question' is required and must be a non-empty string"}), 400
+
+        try:
+            answer = service.answer_question(
+                dream_text.strip(),
+                analysis_result.strip(),
+                question.strip(),
+            )
+            return jsonify({"answer": answer, "modelVersion": config.MODEL_VERSION})
+        except Exception:
+            app.logger.exception("Dream question answering failed")
+            return jsonify({"error": "Internal question answering failure"}), 500
+
     return app
 
 
