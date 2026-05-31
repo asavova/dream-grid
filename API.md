@@ -41,6 +41,51 @@ GET /dreams/{id}
 
 `GET /dreams/{id}` returns `404` when the dream does not exist.
 
+`GET /dreams` also supports filters:
+
+```http
+GET /dreams?type=VISION&status=COMPLETED&tag=sky
+```
+
+Filters can be used individually or together.
+
+## Search Dreams
+
+```http
+GET /dreams/search?query=ocean
+```
+
+Search checks both `title` and `content`.
+
+## Dreams by Tag
+
+```http
+GET /dreams/tags/sky
+```
+
+Tags are normalized before querying. Unknown tags return an empty list.
+
+## Tag Counts
+
+```http
+GET /tags
+```
+
+Example response:
+
+```json
+[
+  {
+    "tag": "fire",
+    "count": 2
+  },
+  {
+    "tag": "sky",
+    "count": 1
+  }
+]
+```
+
 ## Analyze Dream
 
 ```http
@@ -119,6 +164,8 @@ POST /ask
 ```
 
 `confidenceScore` is the model's confidence that the analysis is grounded in the dream text. It is a useful signal, not a guarantee.
+
+Known symbols from the model response are normalized into the Java `DreamSymbol` enum before being persisted as `symbolTags`.
 
 ## Error Format
 

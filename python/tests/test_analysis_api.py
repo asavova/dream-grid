@@ -5,10 +5,10 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from models.analysis_result import AnalysisResult
+from python.models.analysis_result import AnalysisResult
 
 if importlib.util.find_spec("flask") is not None:
-    from analysis_api import create_app
+    from python.analysis_api import create_app
 else:
     create_app = None
 

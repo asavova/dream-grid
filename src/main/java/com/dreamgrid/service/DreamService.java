@@ -16,8 +16,11 @@ import java.sql.SQLException;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
 
 public class DreamService {
   private static final String DEFAULT_ANALYSIS_VERSION = "v1";
@@ -53,15 +56,24 @@ public class DreamService {
 
   public DreamEntry saveDream(String title, String content, String dreamDate, DreamType dreamType)
       throws SQLException {
+    return saveDream(title, content, dreamDate, dreamType, null);
+  }
+
+  public DreamEntry saveDream(
+      String title,
+      String content,
+      String dreamDate,
+      DreamType dreamType,
+      List<String> requestedTags)
+      throws SQLException {
     long timestamp = System.currentTimeMillis();
     String formattedDate =
         dreamDate != null && !dreamDate.isBlank()
             ? dreamDate
             : new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date(timestamp));
     DreamType type = dreamType != null ? dreamType : DreamType.NONE;
-    DreamEntry entry =
-        new DreamEntry(
-            title, content, formattedDate, timestamp, List.of(DreamSymbol.UNKNOWN), type);
+    List<DreamSymbol> tags = DreamSymbol.normalizeTagNames(requestedTags);
+    DreamEntry entry = new DreamEntry(title, content, formattedDate, timestamp, tags, type);
     dreamRepository.insert(entry);
     return entry;
   }
@@ -103,8 +115,47 @@ public class DreamService {
     return dreamRepository.getAll();
   }
 
+  public List<DreamEntry> searchDreams(String query) throws SQLException {
+    if (query == null || query.isBlank()) {
+      return List.of();
+    }
+    return dreamRepository.findByKeyword(query);
+  }
+
+  public List<DreamEntry> getDreamsByTag(String tag) throws SQLException {
+    Optional<DreamSymbol> symbol = DreamSymbol.fromTag(tag);
+    if (symbol.isEmpty()) {
+      return List.of();
+    }
+    return dreamRepository.findByTag(symbol.get());
+  }
+
+  public List<DreamEntry> filterDreams(String type, String status, String tag) throws SQLException {
+    DreamType dreamType = parseDreamType(type);
+    AnalysisStatus analysisStatus = parseAnalysisStatus(status);
+    Optional<DreamSymbol> symbol = DreamSymbol.fromTag(tag);
+
+    if (tag != null && !tag.isBlank() && symbol.isEmpty()) {
+      return List.of();
+    }
+
+    if (dreamType == null && analysisStatus == null && symbol.isEmpty()) {
+      return dreamRepository.getAll();
+    }
+
+    return dreamRepository.findByFilters(null, dreamType, analysisStatus, symbol.orElse(null));
+  }
+
   public DreamEntry getDreamById(int id) throws SQLException {
     return dreamRepository.findById(id);
+  }
+
+  public Map<DreamSymbol, Integer> getTagUsageCounts() throws SQLException {
+    Map<DreamSymbol, Integer> counts = new EnumMap<>(dreamRepository.getTagUsageCounts());
+    for (DreamSymbol symbol : DreamSymbol.values()) {
+      counts.putIfAbsent(symbol, 0);
+    }
+    return counts;
   }
 
   public String askQuestionAboutDream(int dreamId, String question)
@@ -160,15 +211,35 @@ public class DreamService {
         }
 
         String value = element.getAsString().trim().toUpperCase(Locale.ROOT);
-        try {
-          symbols.add(DreamSymbol.valueOf(value));
-        } catch (IllegalArgumentException ignored) {
-          // The Python service can return free-form symbols. Mirror only known enum values.
-        }
+        DreamSymbol.fromTag(value).ifPresent(symbols::add);
       }
-      return symbols.isEmpty() ? List.of(DreamSymbol.UNKNOWN) : symbols;
+      return DreamSymbol.normalizeSymbols(symbols);
     } catch (RuntimeException e) {
       return List.of();
+    }
+  }
+
+  private DreamType parseDreamType(String value) {
+    if (value == null || value.isBlank()) {
+      return null;
+    }
+
+    try {
+      return DreamType.valueOf(value.trim().toUpperCase(Locale.ROOT));
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException("Invalid dream type: " + value);
+    }
+  }
+
+  private AnalysisStatus parseAnalysisStatus(String value) {
+    if (value == null || value.isBlank()) {
+      return null;
+    }
+
+    try {
+      return AnalysisStatus.valueOf(value.trim().toUpperCase(Locale.ROOT));
+    } catch (IllegalArgumentException e) {
+      throw new IllegalArgumentException("Invalid analysis status: " + value);
     }
   }
 }

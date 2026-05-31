@@ -14,7 +14,7 @@ public class DreamEntry extends AbstractDream {
       List<DreamSymbol> dreamSymbols,
       DreamType dreamType) {
     super(title, content, dreamDate, timestamp);
-    this.dreamSymbols = dreamSymbols;
+    this.dreamSymbols = DreamSymbol.normalizeSymbols(dreamSymbols);
     this.dreamType = dreamType;
   }
 
@@ -25,7 +25,7 @@ public class DreamEntry extends AbstractDream {
       long timestamp,
       List<DreamSymbol> dreamSymbols) {
     super(title, content, dreamDate, timestamp);
-    this.dreamSymbols = dreamSymbols;
+    this.dreamSymbols = DreamSymbol.normalizeSymbols(dreamSymbols);
     this.dreamType = DreamType.NONE;
   }
 
@@ -56,7 +56,7 @@ public class DreamEntry extends AbstractDream {
   }
 
   public void setSymbolTags(List<DreamSymbol> dreamSymbols) {
-    this.dreamSymbols = dreamSymbols;
+    this.dreamSymbols = DreamSymbol.normalizeSymbols(dreamSymbols);
   }
 
   public void setDreamType(DreamType dreamType) {

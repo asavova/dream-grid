@@ -1,10 +1,13 @@
 package com.dreamgrid.dto;
 
+import java.util.List;
+
 public class DreamRequest {
   private String title;
   private String content;
   private String date;
   private String type;
+  private List<String> tags;
 
   public DreamRequest() {}
 
@@ -13,6 +16,11 @@ public class DreamRequest {
     this.content = content;
     this.date = date;
     this.type = type;
+  }
+
+  public DreamRequest(String title, String content, String date, String type, List<String> tags) {
+    this(title, content, date, type);
+    this.tags = tags;
   }
 
   public String getTitle() {
@@ -45,5 +53,13 @@ public class DreamRequest {
 
   public void setType(String type) {
     this.type = type;
+  }
+
+  public List<String> getTags() {
+    return tags;
+  }
+
+  public void setTags(List<String> tags) {
+    this.tags = tags;
   }
 }

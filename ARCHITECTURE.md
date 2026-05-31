@@ -28,7 +28,7 @@ SQLite            Python analysis service
 The Java code is organized by responsibility:
 
 - `api` parses HTTP requests and writes JSON responses.
-- `service` owns workflow decisions: cache use, reanalysis, failure handling, and question answering.
+- `service` owns workflow decisions: tag normalization, search validation, cache use, reanalysis, failure handling, and question answering.
 - `repository` owns SQL and row mapping.
 - `database` opens the SQLite connection and creates or migrates the schema.
 - `client` contains the HTTP integration with the Python service.
@@ -46,6 +46,18 @@ The Python service is intentionally small:
 - `config.py` keeps model and server settings in one place.
 
 The model returns a summary, detected symbols, detected themes, a confidence score, and a model version. Symbols and themes are produced by the model response, not by a Java keyword list.
+
+## Tag and Search Flow
+
+Tags use the existing `DreamSymbol` enum as the canonical vocabulary. Incoming tag values are trimmed, case-normalized, deduplicated, and mapped to known symbols. Blank and unknown values are ignored. If no valid tag remains, `UNKNOWN` is used for stored dreams.
+
+Search and filtering are coordinated by `DreamService`, but the SQL stays in `DreamRepository`. Current filters support:
+
+- keyword search over title and content
+- tag lookup
+- dream type
+- analysis status
+- combined filtering through `GET /dreams`
 
 ## Analysis Flow
 

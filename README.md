@@ -8,6 +8,10 @@ DreamGrid is a local backend for storing dreams and running AI-assisted analysis
 - Persist dreams in SQLite
 - Analyze dreams through a local Python service
 - Store analysis result, status, timestamp, and version
+- Normalize dream tags into the existing `DreamSymbol` vocabulary
+- Search dreams by title or content
+- Filter dreams by type, analysis status, and tag
+- List tag usage counts
 - Reuse cached analysis when it is still valid
 - Force a new analysis when needed
 - Ask follow-up questions about an analyzed dream
@@ -141,6 +145,10 @@ Common endpoints:
 GET  /health
 GET  /dreams
 GET  /dreams/{id}
+GET  /dreams/search?query=...
+GET  /dreams/tags/{tag}
+GET  /dreams?type=...&status=...&tag=...
+GET  /tags
 POST /dreams
 POST /dreams/{id}/analyze
 POST /dreams/{id}/reanalyze
@@ -168,12 +176,11 @@ python -m unittest discover -s python/tests
 
 - The Java service expects the Python analysis API at `http://127.0.0.1:5005`.
 - The Python model and version are configured in `python/config.py`.
-- Analysis symbols and themes come from the model response. The Java backend only mirrors known symbols into its existing enum field.
+- Tags are normalized in the service/model layer, not in API handlers.
+- Analysis symbols and themes come from the model response. The Java backend mirrors known symbols into its existing enum field.
 
 ## Roadmap
 
-- Search over stored dreams
 - Analysis history
 - Similarity scoring
-- Symbol statistics
 - More integration tests

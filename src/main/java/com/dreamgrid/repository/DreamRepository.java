@@ -6,7 +6,9 @@ import com.dreamgrid.model.DreamSymbol;
 import com.dreamgrid.model.DreamType;
 import java.sql.*;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 
 public class DreamRepository {
   private final Connection connection;
@@ -88,18 +90,88 @@ public class DreamRepository {
     }
   }
 
+  public List<DreamEntry> findByTag(DreamSymbol tag) throws SQLException {
+    return findByFilters(null, null, null, tag);
+  }
+
+  public List<DreamEntry> findByDreamType(DreamType dreamType) throws SQLException {
+    return findByFilters(null, dreamType, null, null);
+  }
+
+  public List<DreamEntry> findByAnalysisStatus(AnalysisStatus analysisStatus) throws SQLException {
+    return findByFilters(null, null, analysisStatus, null);
+  }
+
+  public List<DreamEntry> findByKeyword(String keyword) throws SQLException {
+    return findByFilters(keyword, null, null, null);
+  }
+
+  public List<DreamEntry> findByFilters(
+      String keyword, DreamType dreamType, AnalysisStatus analysisStatus, DreamSymbol tag)
+      throws SQLException {
+    StringBuilder sql = new StringBuilder("SELECT * FROM dreams WHERE 1 = 1");
+    List<SqlParameter> parameters = new ArrayList<>();
+
+    if (keyword != null && !keyword.isBlank()) {
+      sql.append(" AND (LOWER(title) LIKE ? OR LOWER(content) LIKE ?)");
+      String pattern = "%" + keyword.trim().toLowerCase() + "%";
+      parameters.add(stmt -> stmt.setString(pattern));
+      parameters.add(stmt -> stmt.setString(pattern));
+    }
+
+    if (dreamType != null) {
+      sql.append(" AND dream_type = ?");
+      parameters.add(stmt -> stmt.setString(dreamType.name()));
+    }
+
+    if (analysisStatus != null) {
+      sql.append(" AND analysis_status = ?");
+      parameters.add(stmt -> stmt.setString(analysisStatus.name()));
+    }
+
+    if (tag != null) {
+      sql.append(" AND (',' || COALESCE(symbol_tags, '') || ',') LIKE ?");
+      parameters.add(stmt -> stmt.setString("%," + tag.name() + ",%"));
+    }
+
+    sql.append(" ORDER BY timestamp DESC, id DESC");
+
+    try (PreparedStatement stmt = connection.prepareStatement(sql.toString())) {
+      for (int i = 0; i < parameters.size(); i++) {
+        parameters.get(i).apply(stmt, i + 1);
+      }
+
+      try (ResultSet rs = stmt.executeQuery()) {
+        return mapDreamEntries(rs);
+      }
+    }
+  }
+
+  public Map<DreamSymbol, Integer> getTagUsageCounts() throws SQLException {
+    Map<DreamSymbol, Integer> counts = new EnumMap<>(DreamSymbol.class);
+    for (DreamSymbol symbol : DreamSymbol.values()) {
+      counts.put(symbol, 0);
+    }
+
+    String sql = "SELECT symbol_tags FROM dreams";
+    try (PreparedStatement stmt = connection.prepareStatement(sql);
+        ResultSet rs = stmt.executeQuery()) {
+      while (rs.next()) {
+        for (DreamSymbol symbol : DreamSymbol.deserialize(rs.getString("symbol_tags"))) {
+          counts.put(symbol, counts.getOrDefault(symbol, 0) + 1);
+        }
+      }
+    }
+    return counts;
+  }
+
   public List<DreamEntry> getAll() throws SQLException {
-    List<DreamEntry> dreams = new ArrayList<>();
     String sql = "SELECT * FROM dreams";
 
     try (PreparedStatement stmt = connection.prepareStatement(sql);
         ResultSet rs = stmt.executeQuery()) {
-
-      while (rs.next()) {
-        dreams.add(mapDreamEntry(rs));
-      }
+      return mapDreamEntries(rs);
     }
-    return dreams;
   }
 
   public DreamEntry findById(int id) throws SQLException {
@@ -114,6 +186,14 @@ public class DreamRepository {
       }
     }
     return null;
+  }
+
+  private List<DreamEntry> mapDreamEntries(ResultSet rs) throws SQLException {
+    List<DreamEntry> dreams = new ArrayList<>();
+    while (rs.next()) {
+      dreams.add(mapDreamEntry(rs));
+    }
+    return dreams;
   }
 
   private DreamEntry mapDreamEntry(ResultSet rs) throws SQLException {
@@ -159,5 +239,20 @@ public class DreamRepository {
   private Long getNullableLong(ResultSet rs, String columnName) throws SQLException {
     long value = rs.getLong(columnName);
     return rs.wasNull() ? null : value;
+  }
+
+  @FunctionalInterface
+  private interface SqlParameter {
+    void apply(IndexedStatement stmt) throws SQLException;
+
+    default void apply(PreparedStatement stmt, int index) throws SQLException {
+      apply(new IndexedStatement(stmt, index));
+    }
+  }
+
+  private record IndexedStatement(PreparedStatement stmt, int index) {
+    void setString(String value) throws SQLException {
+      stmt.setString(index, value);
+    }
   }
 }

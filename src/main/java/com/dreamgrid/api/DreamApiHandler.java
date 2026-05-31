@@ -6,6 +6,7 @@ import com.dreamgrid.dto.DreamResponse;
 import com.dreamgrid.dto.ErrorResponse;
 import com.dreamgrid.dto.QuestionRequest;
 import com.dreamgrid.dto.QuestionResponse;
+import com.dreamgrid.dto.TagResponse;
 import com.dreamgrid.model.DreamEntry;
 import com.dreamgrid.model.DreamType;
 import com.dreamgrid.service.DreamService;
@@ -16,9 +17,12 @@ import com.sun.net.httpserver.HttpHandler;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
@@ -40,6 +44,12 @@ public class DreamApiHandler implements HttpHandler {
     try {
       if ("/health".equals(path) && "GET".equals(method)) {
         handleHealth(exchange);
+      } else if ("/tags".equals(path) && "GET".equals(method)) {
+        handleTags(exchange);
+      } else if ("/dreams/search".equals(path) && "GET".equals(method)) {
+        handleSearchDreams(exchange);
+      } else if (path.matches("/dreams/tags/[^/]+$") && "GET".equals(method)) {
+        handleDreamsByTag(exchange);
       } else if ("/dreams".equals(path) && "GET".equals(method)) {
         handleListDreams(exchange);
       } else if ("/dreams".equals(path) && "POST".equals(method)) {
@@ -68,14 +78,50 @@ public class DreamApiHandler implements HttpHandler {
 
   private void handleListDreams(HttpExchange exchange) throws IOException {
     try {
-      List<DreamEntry> dreams = dreamService.getAllDreams();
-      List<DreamResponse> responses =
-          dreams.stream().map(dream -> toDreamResponse(dream)).collect(Collectors.toList());
-
-      String jsonResponse = gson.toJson(responses);
-      sendJsonResponse(exchange, 200, jsonResponse);
+      Map<String, String> queryParams = parseQueryParams(exchange.getRequestURI().getRawQuery());
+      List<DreamEntry> dreams =
+          dreamService.filterDreams(
+              queryParams.get("type"), queryParams.get("status"), queryParams.get("tag"));
+      sendDreamList(exchange, dreams);
+    } catch (IllegalArgumentException e) {
+      sendError(exchange, 400, e.getMessage());
     } catch (SQLException e) {
       logger.log(Level.SEVERE, "Database error listing dreams", e);
+      sendError(exchange, 500, "Database error: " + e.getMessage());
+    }
+  }
+
+  private void handleSearchDreams(HttpExchange exchange) throws IOException {
+    try {
+      Map<String, String> queryParams = parseQueryParams(exchange.getRequestURI().getRawQuery());
+      List<DreamEntry> dreams = dreamService.searchDreams(queryParams.get("query"));
+      sendDreamList(exchange, dreams);
+    } catch (SQLException e) {
+      logger.log(Level.SEVERE, "Database error searching dreams", e);
+      sendError(exchange, 500, "Database error: " + e.getMessage());
+    }
+  }
+
+  private void handleDreamsByTag(HttpExchange exchange) throws IOException {
+    try {
+      String tag = extractLastPathSegment(exchange.getRequestURI().getPath());
+      List<DreamEntry> dreams = dreamService.getDreamsByTag(tag);
+      sendDreamList(exchange, dreams);
+    } catch (SQLException e) {
+      logger.log(Level.SEVERE, "Database error listing dreams by tag", e);
+      sendError(exchange, 500, "Database error: " + e.getMessage());
+    }
+  }
+
+  private void handleTags(HttpExchange exchange) throws IOException {
+    try {
+      List<TagResponse> responses =
+          dreamService.getTagUsageCounts().entrySet().stream()
+              .map(entry -> new TagResponse(entry.getKey().name().toLowerCase(), entry.getValue()))
+              .collect(Collectors.toList());
+      sendJsonResponse(exchange, 200, gson.toJson(responses));
+    } catch (SQLException e) {
+      logger.log(Level.SEVERE, "Database error listing tags", e);
       sendError(exchange, 500, "Database error: " + e.getMessage());
     }
   }
@@ -108,7 +154,11 @@ public class DreamApiHandler implements HttpHandler {
 
       DreamEntry createdDream =
           dreamService.saveDream(
-              request.getTitle(), request.getContent(), request.getDate(), dreamType);
+              request.getTitle(),
+              request.getContent(),
+              request.getDate(),
+              dreamType,
+              request.getTags());
 
       DreamResponse response = toDreamResponse(createdDream);
 
@@ -211,6 +261,11 @@ public class DreamApiHandler implements HttpHandler {
     return Integer.parseInt(parts[2]);
   }
 
+  private String extractLastPathSegment(String path) {
+    String[] parts = path.split("/");
+    return urlDecode(parts[parts.length - 1]);
+  }
+
   private DreamResponse toDreamResponse(DreamEntry dream) {
     return new DreamResponse(
         dream.getId(),
@@ -231,6 +286,37 @@ public class DreamApiHandler implements HttpHandler {
     InputStream is = exchange.getRequestBody();
     byte[] bytes = is.readAllBytes();
     return new String(bytes, StandardCharsets.UTF_8);
+  }
+
+  private void sendDreamList(HttpExchange exchange, List<DreamEntry> dreams) throws IOException {
+    List<DreamResponse> responses =
+        dreams.stream().map(dream -> toDreamResponse(dream)).collect(Collectors.toList());
+    sendJsonResponse(exchange, 200, gson.toJson(responses));
+  }
+
+  private Map<String, String> parseQueryParams(String rawQuery) {
+    Map<String, String> params = new HashMap<>();
+    if (rawQuery == null || rawQuery.isBlank()) {
+      return params;
+    }
+
+    for (String pair : rawQuery.split("&")) {
+      if (pair.isBlank()) {
+        continue;
+      }
+
+      String[] parts = pair.split("=", 2);
+      String key = urlDecode(parts[0]);
+      String value = parts.length > 1 ? urlDecode(parts[1]) : "";
+      if (!key.isBlank()) {
+        params.put(key, value);
+      }
+    }
+    return params;
+  }
+
+  private String urlDecode(String value) {
+    return URLDecoder.decode(value, StandardCharsets.UTF_8);
   }
 
   private void sendJsonResponse(HttpExchange exchange, int statusCode, String jsonResponse)

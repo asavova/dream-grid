@@ -2,6 +2,7 @@ package com.dreamgrid.service;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 
 import com.dreamgrid.client.DreamAnalysisClient;
 import com.dreamgrid.model.AnalysisStatus;
@@ -133,6 +134,94 @@ public class DreamServiceTest {
 
     assertEquals("Dream must be analyzed before asking questions.", exception.getMessage());
     assertEquals(0, analysisClient.questionCalls);
+  }
+
+  @Test
+  public void saveDreamNormalizesTagsAndRemovesDuplicates() throws Exception {
+    DreamEntry dream =
+        dreamService.saveDream(
+            "Tagged Dream",
+            "A dream about fire.",
+            "2026-05-31",
+            DreamType.ORDINARY,
+            List.of(" fire ", "FIRE", "", "sky", "not-a-symbol"));
+
+    DreamEntry reloaded = repository.findById(dream.getId());
+
+    assertEquals(List.of(DreamSymbol.FIRE, DreamSymbol.SKY), reloaded.getSymbolTags());
+  }
+
+  @Test
+  public void searchByTagReturnsMatchingDreams() throws Exception {
+    DreamEntry fireDream =
+        dreamService.saveDream(
+            "Fire Dream", "The horizon burned.", "2026-05-31", DreamType.VISION, List.of("fire"));
+    dreamService.saveDream(
+        "Water Dream",
+        "Rain covered the road.",
+        "2026-05-31",
+        DreamType.ORDINARY,
+        List.of("water"));
+
+    List<DreamEntry> results = dreamService.getDreamsByTag(" FIRE ");
+
+    assertEquals(1, results.size());
+    assertEquals(fireDream.getId(), results.get(0).getId());
+  }
+
+  @Test
+  public void keywordSearchChecksTitleAndContent() throws Exception {
+    DreamEntry titleMatch =
+        dreamService.saveDream(
+            "Ocean Door", "I was in a quiet room.", "2026-05-31", DreamType.ORDINARY, null);
+    DreamEntry contentMatch =
+        dreamService.saveDream(
+            "Plain Dream", "The ocean was dark.", "2026-05-31", DreamType.ORDINARY, null);
+    dreamService.saveDream(
+        "Sky Dream", "Birds crossed the sky.", "2026-05-31", DreamType.ORDINARY, null);
+
+    List<Integer> resultIds =
+        dreamService.searchDreams("ocean").stream().map(DreamEntry::getId).toList();
+
+    assertEquals(2, resultIds.size());
+    assertTrue(resultIds.contains(titleMatch.getId()));
+    assertTrue(resultIds.contains(contentMatch.getId()));
+  }
+
+  @Test
+  public void filteringByAnalysisStatusWorks() throws Exception {
+    DreamEntry completed = completedDream("cached analysis", 100L, "v1");
+    repository.insert(completed);
+    dreamService.saveDream(
+        "Pending Dream", "No analysis yet.", "2026-05-31", DreamType.ORDINARY, null);
+
+    List<DreamEntry> results = dreamService.filterDreams(null, "completed", null);
+
+    assertEquals(1, results.size());
+    assertEquals(completed.getId(), results.get(0).getId());
+  }
+
+  @Test
+  public void unknownTagReturnsEmptyResult() throws Exception {
+    dreamService.saveDream(
+        "Fire Dream", "The horizon burned.", "2026-05-31", DreamType.VISION, List.of("fire"));
+
+    List<DreamEntry> results = dreamService.getDreamsByTag("not-a-symbol");
+
+    assertTrue(results.isEmpty());
+  }
+
+  @Test
+  public void tagUsageCountsAreCorrect() throws Exception {
+    dreamService.saveDream(
+        "Fire Sky", "A bright dream.", "2026-05-31", DreamType.VISION, List.of("fire", "sky"));
+    dreamService.saveDream(
+        "Fire", "Another bright dream.", "2026-05-31", DreamType.VISION, List.of("fire"));
+    dreamService.saveDream("Unknown", "No specific tag.", "2026-05-31", DreamType.ORDINARY, null);
+
+    assertEquals(Integer.valueOf(2), dreamService.getTagUsageCounts().get(DreamSymbol.FIRE));
+    assertEquals(Integer.valueOf(1), dreamService.getTagUsageCounts().get(DreamSymbol.SKY));
+    assertEquals(Integer.valueOf(1), dreamService.getTagUsageCounts().get(DreamSymbol.UNKNOWN));
   }
 
   private DreamEntry completedDream(String analysis, long analyzedAt, String version) {
