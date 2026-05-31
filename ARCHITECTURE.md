@@ -80,16 +80,14 @@ Dream classification is stored separately from analysis status. `DreamClassifica
 Classification has a source:
 
 - `USER` for explicit user overrides
-- `ANALYSIS` for deterministic inference from analysis text, themes, tags, and dream content
-- `PATTERN_ENGINE` for recurring-dream inference based on historical tag overlap
+- `INFERRED` for deterministic inference from dream text and recurring tag patterns
 - `UNKNOWN` when nothing has classified the dream yet
 
 `DreamClassificationService` applies the precedence rule:
 
 1. user classification
-2. pattern-based recurring inference
-3. analysis inference
-4. unknown
+2. inferred type from deterministic rules and recurring tag overlap
+3. unknown
 
 User overrides do not delete inferred classification. Reanalysis can update inferred classification, but the effective classification remains the user override until the override is cleared.
 
@@ -102,7 +100,7 @@ User overrides do not delete inferred classification. Reanalysis can update infe
 5. The Java client calls the Python service.
 6. On success, the run is marked `COMPLETED` and the latest analysis snapshot on the dream row is updated in the same local transaction.
 7. Analysis symbols and themes are stored as analysis-generated tags.
-8. Classification inference runs from the analysis result and stored tags.
+8. Classification inference runs from deterministic rules over dream text and stored tags.
 9. If the Python call fails, the run is marked `FAILED`, the failure reason is stored, the dream status becomes `FAILED`, and the previous successful result is kept.
 
 `POST /dreams/{id}/reanalyze` skips the cache and always calls the Python service.
@@ -111,7 +109,7 @@ User overrides do not delete inferred classification. Reanalysis can update infe
 
 ## Question Flow
 
-`POST /dreams/{id}/questions` requires a completed analysis. The Java service sends the dream text, stored analysis, and question to the Python service. The answer is returned but not persisted.
+`POST /dreams/{id}/questions` requires a completed analysis. The Java service sends the dream text, stored analysis, and question to the Python service. The answer is persisted in `dream_questions` only after successful generation and linked to the completed `analysis_runs` row used for that answer.
 
 ## Persistence
 
@@ -143,5 +141,15 @@ Classification state:
 - `effective_classification`
 - `classification_source`
 - `classification_reason`
+- `type_confidence`
 - `classification_updated_at`
+
+Question history state is stored in `dream_questions`:
+
+- `dream_id`
+- `analysis_run_id`
+- `question`
+- `answer`
+- `created_at`
+
 Tags are stored in a separate `dream_tags` table with normalized names and a many-to-many link table `dream_tag_links` that tracks the source of each tag.

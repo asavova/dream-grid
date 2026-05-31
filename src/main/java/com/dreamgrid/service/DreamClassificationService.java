@@ -6,47 +6,61 @@ import com.dreamgrid.model.DreamClassification;
 import com.dreamgrid.model.DreamEntry;
 import com.dreamgrid.model.DreamTag;
 import com.dreamgrid.repository.DreamRepository;
-import com.google.gson.Gson;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
 import java.sql.SQLException;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
 public class DreamClassificationService {
   private final DreamRepository dreamRepository;
-  private final Gson gson = new Gson();
 
   public DreamClassificationService(DreamRepository dreamRepository) {
     this.dreamRepository = dreamRepository;
   }
 
-  public ClassificationResult classifyFromAnalysis(DreamEntry dream, String analysisResult) {
-    String evidence = buildEvidence(dream, analysisResult);
+  public ClassificationResult inferFromDreamText(String title, String content) {
+    String evidence =
+        ((title == null ? "" : title) + " " + (content == null ? "" : content))
+            .toLowerCase(Locale.ROOT);
     long now = System.currentTimeMillis();
 
-    if (containsAny(evidence, "lucid", "aware i was dreaming", "knew i was dreaming")) {
+    if (containsAny(
+        evidence,
+        "aware i was dreaming",
+        "controlled the dream",
+        "realized i was dreaming",
+        "realised i was dreaming")) {
       return new ClassificationResult(
           DreamClassification.LUCID,
-          ClassificationSource.ANALYSIS,
-          "Analysis or dream content contains lucid-dream signals.",
+          ClassificationSource.INFERRED,
+          "Content indicates lucid dream awareness or control.",
+          0.95,
           now);
     }
 
-    if (containsAny(evidence, "nightmare", "terror", "terrified", "panic", "chased", "threat")) {
+    if (containsAny(
+        evidence, "fear", "threat", "panic", "chased", "trapped", "nightmare", "terror")) {
       return new ClassificationResult(
           DreamClassification.NIGHTMARE,
-          ClassificationSource.ANALYSIS,
-          "Analysis or dream content contains nightmare-related signals.",
+          ClassificationSource.INFERRED,
+          "Content indicates fear, threat, or panic signals.",
+          0.9,
+          now);
+    }
+
+    if (containsAny(evidence, "recurring", "repeated", "again", "same dream")) {
+      return new ClassificationResult(
+          DreamClassification.RECURRING,
+          ClassificationSource.INFERRED,
+          "Title or content indicates recurring-dream wording.",
+          0.85,
           now);
     }
 
     return new ClassificationResult(
         DreamClassification.NEUTRAL,
-        ClassificationSource.ANALYSIS,
-        "No strong lucid, nightmare, or recurring pattern was detected.",
+        ClassificationSource.INFERRED,
+        "No strong lucid, nightmare, or recurring signals were found.",
+        0.55,
         now);
   }
 
@@ -68,25 +82,26 @@ public class DreamClassificationService {
 
     return new ClassificationResult(
         DreamClassification.RECURRING,
-        ClassificationSource.PATTERN_ENGINE,
+        ClassificationSource.INFERRED,
         "Dream shares multiple normalized tags with previous saved dreams.",
+        0.88,
         System.currentTimeMillis());
   }
 
-  public void applyInitialClassification(DreamEntry dream, DreamClassification userClassification) {
+  public void applyInitialClassification(
+      DreamEntry dream, DreamClassification userClassification, String title, String content) {
     if (userClassification != null && userClassification != DreamClassification.UNKNOWN) {
       dream.setUserClassification(userClassification);
       dream.setEffectiveClassification(userClassification);
       dream.setClassificationSource(ClassificationSource.USER);
-      dream.setClassificationReason("Classification provided by user.");
+      dream.setClassificationReason("Type provided by user.");
+      dream.setTypeConfidence(1.0);
       dream.setClassificationUpdatedAt(System.currentTimeMillis());
       return;
     }
 
-    dream.setEffectiveClassification(DreamClassification.UNKNOWN);
-    dream.setClassificationSource(ClassificationSource.UNKNOWN);
-    dream.setClassificationReason(null);
-    dream.setClassificationUpdatedAt(System.currentTimeMillis());
+    ClassificationResult inferred = inferFromDreamText(title, content);
+    applyInference(dream, inferred);
   }
 
   public void applyInference(DreamEntry dream, ClassificationResult result) {
@@ -96,6 +111,7 @@ public class DreamClassificationService {
 
     dream.setInferredClassification(result.classification());
     dream.setClassificationReason(result.reason());
+    dream.setTypeConfidence(result.confidence());
     dream.setClassificationUpdatedAt(result.updatedAt());
 
     if (dream.getUserClassification() == null) {
@@ -104,6 +120,7 @@ public class DreamClassificationService {
     } else {
       dream.setEffectiveClassification(dream.getUserClassification());
       dream.setClassificationSource(ClassificationSource.USER);
+      dream.setTypeConfidence(1.0);
     }
   }
 
@@ -111,13 +128,14 @@ public class DreamClassificationService {
     if (dream.getUserClassification() != null) {
       dream.setEffectiveClassification(dream.getUserClassification());
       dream.setClassificationSource(ClassificationSource.USER);
+      dream.setTypeConfidence(1.0);
     } else if (dream.getInferredClassification() != null) {
       dream.setEffectiveClassification(dream.getInferredClassification());
-      dream.setClassificationSource(
-          sourceForInferredClassification(dream.getInferredClassification()));
+      dream.setClassificationSource(ClassificationSource.INFERRED);
     } else {
       dream.setEffectiveClassification(DreamClassification.UNKNOWN);
       dream.setClassificationSource(ClassificationSource.UNKNOWN);
+      dream.setTypeConfidence(null);
     }
     dream.setClassificationUpdatedAt(System.currentTimeMillis());
   }
@@ -133,7 +151,8 @@ public class DreamClassificationService {
     dream.setUserClassification(parsed);
     dream.setEffectiveClassification(parsed);
     dream.setClassificationSource(ClassificationSource.USER);
-    dream.setClassificationReason("Classification provided by user.");
+    dream.setClassificationReason("Type provided by user.");
+    dream.setTypeConfidence(1.0);
     dream.setClassificationUpdatedAt(System.currentTimeMillis());
     dreamRepository.updateClassificationFields(dream);
     return dreamRepository.findById(dreamId);
@@ -153,51 +172,14 @@ public class DreamClassificationService {
 
   private DreamClassification parseUserClassification(String classification) {
     if (classification == null || classification.isBlank()) {
-      throw new DreamGridException(ApiErrorCode.VALIDATION_ERROR, "Classification is required");
+      throw new DreamGridException(ApiErrorCode.VALIDATION_ERROR, "Type is required");
     }
 
     try {
       return DreamClassification.valueOf(classification.trim().toUpperCase(Locale.ROOT));
     } catch (IllegalArgumentException e) {
       throw new DreamGridException(
-          ApiErrorCode.VALIDATION_ERROR, "Invalid classification: " + classification);
-    }
-  }
-
-  private String buildEvidence(DreamEntry dream, String analysisResult) {
-    List<String> parts = new ArrayList<>();
-    parts.add(dream.getContent());
-    parts.add(analysisResult);
-
-    try {
-      JsonObject root = gson.fromJson(analysisResult, JsonObject.class);
-      if (root != null) {
-        addString(root, "summary", parts);
-        addJsonArray(root, "detectedSymbols", parts);
-        addJsonArray(root, "detectedThemes", parts);
-      }
-    } catch (RuntimeException ignored) {
-      // Non-JSON analysis is still searched as raw text.
-    }
-
-    return String.join(" ", parts).toLowerCase(Locale.ROOT);
-  }
-
-  private void addString(JsonObject root, String fieldName, List<String> parts) {
-    if (root.has(fieldName) && root.get(fieldName).isJsonPrimitive()) {
-      parts.add(root.get(fieldName).getAsString());
-    }
-  }
-
-  private void addJsonArray(JsonObject root, String fieldName, List<String> parts) {
-    if (!root.has(fieldName) || !root.get(fieldName).isJsonArray()) {
-      return;
-    }
-    JsonArray values = root.getAsJsonArray(fieldName);
-    for (JsonElement value : values) {
-      if (value.isJsonPrimitive()) {
-        parts.add(value.getAsString());
-      }
+          ApiErrorCode.VALIDATION_ERROR, "Invalid type: " + classification);
     }
   }
 
@@ -208,11 +190,5 @@ public class DreamClassificationService {
       }
     }
     return false;
-  }
-
-  private ClassificationSource sourceForInferredClassification(DreamClassification classification) {
-    return classification == DreamClassification.RECURRING
-        ? ClassificationSource.PATTERN_ENGINE
-        : ClassificationSource.ANALYSIS;
   }
 }

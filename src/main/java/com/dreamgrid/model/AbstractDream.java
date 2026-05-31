@@ -16,6 +16,7 @@ public abstract class AbstractDream implements IDreamEntry {
   protected DreamClassification effectiveClassification;
   protected ClassificationSource classificationSource;
   protected String classificationReason;
+  protected Double typeConfidence;
   protected Long classificationUpdatedAt;
 
   public AbstractDream(String title, String content, String dreamDate, long timestamp) {
@@ -153,11 +154,35 @@ public abstract class AbstractDream implements IDreamEntry {
     this.classificationReason = classificationReason;
   }
 
+  public Double getTypeConfidence() {
+    return typeConfidence;
+  }
+
+  public void setTypeConfidence(Double typeConfidence) {
+    this.typeConfidence = typeConfidence;
+  }
+
   public Long getClassificationUpdatedAt() {
     return classificationUpdatedAt;
   }
 
   public void setClassificationUpdatedAt(Long classificationUpdatedAt) {
     this.classificationUpdatedAt = classificationUpdatedAt;
+  }
+
+  public DreamClassification getUserType() {
+    return getUserClassification();
+  }
+
+  public DreamClassification getInferredType() {
+    return getInferredClassification();
+  }
+
+  public DreamClassification getEffectiveType() {
+    return getEffectiveClassification();
+  }
+
+  public ClassificationSource getTypeSource() {
+    return getClassificationSource();
   }
 }

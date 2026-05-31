@@ -29,9 +29,9 @@ INSERT INTO dreams (
   title, content, dream_date, timestamp, symbol_tags, dream_type,
   analyzed, analysis_result, analyzed_at, analysis_version, analysis_status,
   user_classification, inferred_classification, effective_classification,
-  classification_source, classification_reason,
+  classification_source, classification_reason, type_confidence,
   classification_updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 """;
     try (PreparedStatement stmt =
         connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
@@ -54,7 +54,8 @@ INSERT INTO dreams (
       stmt.setString(14, entry.getEffectiveClassification().name());
       stmt.setString(15, entry.getClassificationSource().name());
       stmt.setString(16, entry.getClassificationReason());
-      setNullableLong(stmt, 17, entry.getClassificationUpdatedAt());
+      setNullableDouble(stmt, 17, entry.getTypeConfidence());
+      setNullableLong(stmt, 18, entry.getClassificationUpdatedAt());
 
       stmt.executeUpdate();
 
@@ -73,7 +74,7 @@ UPDATE dreams SET
   title = ?, content = ?, dream_date = ?, timestamp = ?, symbol_tags = ?, dream_type = ?,
   analyzed = ?, analysis_result = ?, analyzed_at = ?, analysis_version = ?, analysis_status = ?,
   user_classification = ?, inferred_classification = ?, effective_classification = ?,
-  classification_source = ?, classification_reason = ?,
+  classification_source = ?, classification_reason = ?, type_confidence = ?,
   classification_updated_at = ?
 WHERE id = ?
 """;
@@ -96,9 +97,10 @@ WHERE id = ?
       stmt.setString(14, entry.getEffectiveClassification().name());
       stmt.setString(15, entry.getClassificationSource().name());
       stmt.setString(16, entry.getClassificationReason());
-      setNullableLong(stmt, 17, entry.getClassificationUpdatedAt());
+      setNullableDouble(stmt, 17, entry.getTypeConfidence());
+      setNullableLong(stmt, 18, entry.getClassificationUpdatedAt());
 
-      stmt.setInt(18, entry.getId());
+      stmt.setInt(19, entry.getId());
 
       stmt.executeUpdate();
     }
@@ -128,6 +130,7 @@ UPDATE dreams SET
   effective_classification = ?,
   classification_source = ?,
   classification_reason = ?,
+  type_confidence = ?,
   classification_updated_at = ?,
   dream_type = ?
 WHERE id = ?
@@ -138,9 +141,10 @@ WHERE id = ?
       stmt.setString(3, entry.getEffectiveClassification().name());
       stmt.setString(4, entry.getClassificationSource().name());
       stmt.setString(5, entry.getClassificationReason());
-      setNullableLong(stmt, 6, entry.getClassificationUpdatedAt());
-      stmt.setString(7, entry.getEffectiveClassification().name());
-      stmt.setInt(8, entry.getId());
+      setNullableDouble(stmt, 6, entry.getTypeConfidence());
+      setNullableLong(stmt, 7, entry.getClassificationUpdatedAt());
+      stmt.setString(8, entry.getEffectiveClassification().name());
+      stmt.setInt(9, entry.getId());
       stmt.executeUpdate();
     }
   }
@@ -429,6 +433,7 @@ FROM (
     entry.setEffectiveClassification(parseClassification(rs.getString("effective_classification")));
     entry.setClassificationSource(parseClassificationSource(rs.getString("classification_source")));
     entry.setClassificationReason(rs.getString("classification_reason"));
+    entry.setTypeConfidence(getNullableDouble(rs, "type_confidence"));
     entry.setClassificationUpdatedAt(getNullableLong(rs, "classification_updated_at"));
     entry.setSymbolTags(listTagsForDream(entry.getId()));
     return entry;
@@ -480,6 +485,9 @@ FROM (
     if (value == null || value.isBlank()) {
       return ClassificationSource.UNKNOWN;
     }
+    if ("ANALYSIS".equals(value) || "PATTERN_ENGINE".equals(value)) {
+      return ClassificationSource.INFERRED;
+    }
     try {
       return ClassificationSource.valueOf(value);
     } catch (IllegalArgumentException e) {
@@ -506,6 +514,15 @@ FROM (
     }
   }
 
+  private void setNullableDouble(PreparedStatement stmt, int index, Double value)
+      throws SQLException {
+    if (value == null) {
+      stmt.setNull(index, Types.REAL);
+    } else {
+      stmt.setDouble(index, value);
+    }
+  }
+
   private void setNullableClassification(
       PreparedStatement stmt, int index, DreamClassification value) throws SQLException {
     if (value == null) {
@@ -517,6 +534,11 @@ FROM (
 
   private Long getNullableLong(ResultSet rs, String columnName) throws SQLException {
     long value = rs.getLong(columnName);
+    return rs.wasNull() ? null : value;
+  }
+
+  private Double getNullableDouble(ResultSet rs, String columnName) throws SQLException {
+    double value = rs.getDouble(columnName);
     return rs.wasNull() ? null : value;
   }
 

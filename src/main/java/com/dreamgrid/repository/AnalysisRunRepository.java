@@ -109,6 +109,21 @@ WHERE id = ?
     return null;
   }
 
+  public AnalysisRun findLatestCompletedByDreamId(int dreamId) throws SQLException {
+    String sql =
+        "SELECT * FROM analysis_runs WHERE dream_id = ? AND status = ? ORDER BY completed_at DESC, id DESC LIMIT 1";
+    try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+      stmt.setInt(1, dreamId);
+      stmt.setString(2, AnalysisStatus.COMPLETED.name());
+      try (ResultSet rs = stmt.executeQuery()) {
+        if (rs.next()) {
+          return mapRun(rs);
+        }
+      }
+    }
+    return null;
+  }
+
   private AnalysisRun mapRun(ResultSet rs) throws SQLException {
     return new AnalysisRun(
         rs.getInt("id"),

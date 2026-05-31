@@ -7,4 +7,5 @@ public record ClassificationResult(
     DreamClassification classification,
     ClassificationSource source,
     String reason,
+    Double confidence,
     long updatedAt) {}

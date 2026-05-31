@@ -26,7 +26,7 @@ Content-Type: application/json
   "title": "Mountain Climb",
   "content": "I was climbing a mountain under a clear sky",
   "date": "2026-05-31",
-  "classification": "NEUTRAL",
+  "type": "NEUTRAL",
   "tags": ["mountain", "clear sky"]
 }
 ```
@@ -38,8 +38,15 @@ Validation rules:
 - `title` must not be blank and must be at most 160 characters.
 - `content` must not be blank and must be at most 12,000 characters.
 - `date`, when provided, must use `yyyy-MM-dd` or `yyyy-MM-dd HH:mm:ss`.
-- `classification`, when provided, must be one of `LUCID`, `NIGHTMARE`, `RECURRING`, `NEUTRAL`, or `UNKNOWN`. The older `type` field is still accepted as a request alias for compatibility.
+- `type`, when provided, must be one of `LUCID`, `NIGHTMARE`, `RECURRING`, `NEUTRAL`, or `UNKNOWN`.
 - `tags`, when provided, are trimmed, lowercased, deduplicated, and stored as manual tags.
+
+Type behavior:
+
+- If `type` is provided, it is stored as `userType` and becomes `effectiveType`.
+- If `type` is omitted, type is inferred deterministically from title/content and stored as `inferredType`.
+- `typeSource` is `USER`, `INFERRED`, or `UNKNOWN`.
+- `typeConfidence` stores the deterministic inference confidence.
 
 ## Read Dreams
 
@@ -88,10 +95,10 @@ Removes the dream and cascades deletion to related `analysis_runs` and `dream_ta
 `GET /dreams` also supports filters:
 
 ```http
-GET /dreams?classification=NEUTRAL&status=COMPLETED&tag=sky
+GET /dreams?type=NEUTRAL&status=COMPLETED&tag=sky
 ```
 
-Filters can be used individually or together. The older `type` query parameter is still accepted as a classification alias.
+Filters can be used individually or together.
 
 ## Search Dreams
 
@@ -206,15 +213,27 @@ Example response:
 
 ```json
 {
+  "id": 10,
   "dreamId": 1,
+  "analysisRunId": 7,
   "question": "What does the sky represent?",
-  "answer": "The sky points to openness or a need for perspective in the dream."
+  "answer": "The sky points to openness or a need for perspective in the dream.",
+  "createdAt": 1780250300000
 }
 ```
 
 This endpoint requires a completed analysis. If the dream is not analyzed yet, the API returns `400`.
+A question is persisted only after the answer is successfully generated.
+Each stored question is linked to the completed `analysis_runs` row used to answer.
 
 Questions must not be blank and must be at most 1,000 characters.
+
+Question history endpoints:
+
+```http
+GET /dreams/{id}/questions
+GET /dreams/{id}/questions/{questionId}
+```
 
 ## Dream Classification
 
@@ -228,11 +247,12 @@ DELETE /dreams/{id}/classification/override
 
 ```json
 {
-  "userClassification": null,
-  "inferredClassification": "NIGHTMARE",
-  "effectiveClassification": "NIGHTMARE",
-  "classificationSource": "ANALYSIS",
-  "classificationReason": "Analysis or dream content contains nightmare-related signals.",
+  "userType": null,
+  "inferredType": "NIGHTMARE",
+  "effectiveType": "NIGHTMARE",
+  "typeSource": "INFERRED",
+  "classificationReason": "Content indicates fear, threat, or panic signals.",
+  "typeConfidence": 0.9,
   "classificationUpdatedAt": 1780250100000
 }
 ```
@@ -247,7 +267,7 @@ DELETE /dreams/{id}/classification/override
 
 User overrides become the effective classification and are preserved during reanalysis. `DELETE /dreams/{id}/classification/override` removes the user override and restores the inferred classification when one exists.
 
-After successful analysis, the backend may infer `LUCID`, `NIGHTMARE`, or `NEUTRAL` from the analysis response and dream content. It may infer `RECURRING` only from historical tag overlap with other saved dreams. This workflow is deterministic backend logic and does not call the Python service beyond the normal analysis request.
+Type inference is deterministic backend logic, not AI moderation. It uses explicit phrase and signal matching from dream text plus recurring tag overlap for recurring-type promotion during analysis workflows.
 
 ## Python Analysis Service
 

@@ -11,6 +11,7 @@ import com.dreamgrid.model.AnalysisStatus;
 import com.dreamgrid.model.ClassificationSource;
 import com.dreamgrid.model.DreamClassification;
 import com.dreamgrid.model.DreamEntry;
+import com.dreamgrid.model.DreamQuestion;
 import com.dreamgrid.model.DreamTag;
 import com.dreamgrid.repository.DreamRepository;
 import java.io.IOException;
@@ -318,8 +319,14 @@ public class DreamServiceTest {
   @Test
   public void questionAboutAnalyzedDreamUsesStoredAnalysisContext() throws Exception {
     DreamEntry dream =
-        completedDream("{\"summary\":\"A transition dream.\"}", 100L, EXPECTED_ANALYSIS_VERSION);
-    repository.insert(dream);
+        dreamService.saveDream(
+            "Dream",
+            "I crossed a bright sky portal.",
+            "2026-05-31",
+            DreamClassification.NEUTRAL,
+            null);
+    analysisClient.nextResult = "{\"summary\":\"A transition dream.\",\"modelVersion\":\"v1\"}";
+    dreamService.analyzeDream(dream.getId());
     analysisClient.nextAnswer = "The portal points to transition.";
 
     String answer = dreamService.askQuestionAboutDream(dream.getId(), "What does the portal mean?");
@@ -327,8 +334,60 @@ public class DreamServiceTest {
     assertEquals("The portal points to transition.", answer);
     assertEquals(1, analysisClient.questionCalls);
     assertEquals("I crossed a bright sky portal.", analysisClient.lastQuestionDream);
-    assertEquals("{\"summary\":\"A transition dream.\"}", analysisClient.lastQuestionAnalysis);
+    assertTrue(analysisClient.lastQuestionAnalysis.contains("\"summary\":\"A transition dream.\""));
     assertEquals("What does the portal mean?", analysisClient.lastQuestion);
+  }
+
+  @Test
+  public void questionPersistenceAfterSuccessfulAnswer() throws Exception {
+    DreamEntry dream =
+        dreamService.saveDream(
+            "Dream", "I crossed a bright sky portal.", "2026-05-31", null, List.of("sky"));
+    analysisClient.nextResult = "{\"summary\":\"A transition dream.\",\"modelVersion\":\"v1\"}";
+    dreamService.analyzeDream(dream.getId());
+    analysisClient.nextAnswer = "Stored answer";
+
+    String answer = dreamService.askQuestionAboutDream(dream.getId(), "What does it mean?");
+    List<DreamQuestion> questions = dreamService.getQuestionHistory(dream.getId());
+
+    assertEquals("Stored answer", answer);
+    assertEquals(1, questions.size());
+    assertEquals("What does it mean?", questions.get(0).getQuestion());
+    assertEquals("Stored answer", questions.get(0).getAnswer());
+  }
+
+  @Test
+  public void questionLinksToCompletedAnalysisRun() throws Exception {
+    DreamEntry dream =
+        dreamService.saveDream(
+            "Dream", "I crossed a bright sky portal.", "2026-05-31", null, List.of("sky"));
+    analysisClient.nextResult = "{\"summary\":\"A transition dream.\",\"modelVersion\":\"v1\"}";
+    dreamService.analyzeDream(dream.getId());
+    AnalysisRun latestRun = dreamService.getLatestAnalysisRun(dream.getId());
+
+    dreamService.askQuestionAboutDream(dream.getId(), "What does it mean?");
+    DreamQuestion question = dreamService.getQuestionHistory(dream.getId()).get(0);
+
+    assertEquals(Integer.valueOf(latestRun.getId()), question.getAnalysisRunId());
+  }
+
+  @Test
+  public void oldQuestionsSurviveReanalysis() throws Exception {
+    DreamEntry dream =
+        dreamService.saveDream(
+            "Dream", "I crossed a bright sky portal.", "2026-05-31", null, List.of("sky"));
+    analysisClient.nextResult = "{\"summary\":\"A transition dream.\",\"modelVersion\":\"v1\"}";
+    dreamService.analyzeDream(dream.getId());
+    dreamService.askQuestionAboutDream(dream.getId(), "First question?");
+    int firstQuestionId = dreamService.getQuestionHistory(dream.getId()).get(0).getId();
+
+    analysisClient.nextResult = "{\"summary\":\"Updated analysis.\",\"modelVersion\":\"v2\"}";
+    dreamService.reanalyzeDream(dream.getId());
+    dreamService.askQuestionAboutDream(dream.getId(), "Second question?");
+    List<DreamQuestion> history = dreamService.getQuestionHistory(dream.getId());
+
+    assertEquals(2, history.size());
+    assertTrue(history.stream().anyMatch(q -> q.getId() == firstQuestionId));
   }
 
   @Test
@@ -525,7 +584,7 @@ public class DreamServiceTest {
   }
 
   @Test
-  public void dreamWithoutClassificationStartsUnknown() throws Exception {
+  public void omittedTypeIsInferredFromContent() throws Exception {
     DreamEntry dream =
         dreamService.saveDream(
             "Unclassified",
@@ -536,8 +595,39 @@ public class DreamServiceTest {
 
     DreamEntry reloaded = repository.findById(dream.getId());
 
-    assertEquals(DreamClassification.UNKNOWN, reloaded.getEffectiveClassification());
-    assertEquals(ClassificationSource.UNKNOWN, reloaded.getClassificationSource());
+    assertEquals(DreamClassification.NEUTRAL, reloaded.getEffectiveClassification());
+    assertEquals(ClassificationSource.INFERRED, reloaded.getClassificationSource());
+  }
+
+  @Test
+  public void lucidDreamInference() throws Exception {
+    DreamEntry dream =
+        dreamService.saveDream(
+            "Lucid start",
+            "I realized I was dreaming and controlled the dream.",
+            "2026-05-31",
+            null,
+            null);
+    DreamEntry reloaded = repository.findById(dream.getId());
+    assertEquals(DreamClassification.LUCID, reloaded.getEffectiveClassification());
+  }
+
+  @Test
+  public void nightmareInference() throws Exception {
+    DreamEntry dream =
+        dreamService.saveDream(
+            "Night fear", "I was trapped and chased in panic.", "2026-05-31", null, null);
+    DreamEntry reloaded = repository.findById(dream.getId());
+    assertEquals(DreamClassification.NIGHTMARE, reloaded.getEffectiveClassification());
+  }
+
+  @Test
+  public void recurringInference() throws Exception {
+    DreamEntry dream =
+        dreamService.saveDream(
+            "Same dream again", "The same dream happened again.", "2026-05-31", null, null);
+    DreamEntry reloaded = repository.findById(dream.getId());
+    assertEquals(DreamClassification.RECURRING, reloaded.getEffectiveClassification());
   }
 
   @Test
@@ -551,6 +641,7 @@ public class DreamServiceTest {
     assertEquals(DreamClassification.LUCID, reloaded.getUserClassification());
     assertEquals(DreamClassification.LUCID, reloaded.getEffectiveClassification());
     assertEquals(ClassificationSource.USER, reloaded.getClassificationSource());
+    assertEquals(Double.valueOf(1.0), reloaded.getTypeConfidence());
   }
 
   @Test
@@ -571,8 +662,8 @@ public class DreamServiceTest {
 
     assertEquals(DreamClassification.NIGHTMARE, reloaded.getInferredClassification());
     assertEquals(DreamClassification.NIGHTMARE, reloaded.getEffectiveClassification());
-    assertEquals(ClassificationSource.ANALYSIS, reloaded.getClassificationSource());
-    assertTrue(reloaded.getClassificationReason().contains("nightmare"));
+    assertEquals(ClassificationSource.INFERRED, reloaded.getClassificationSource());
+    assertTrue(reloaded.getClassificationReason().contains("fear"));
   }
 
   @Test
@@ -580,7 +671,7 @@ public class DreamServiceTest {
     DreamEntry dream =
         dreamService.saveDream(
             "Override",
-            "A strange dream.",
+            "A trapped and chased dream.",
             "2026-05-31",
             DreamClassification.LUCID,
             List.of("door"));
@@ -601,7 +692,7 @@ public class DreamServiceTest {
     DreamEntry dream =
         dreamService.saveDream(
             "Override",
-            "A strange dream.",
+            "A trapped and chased dream.",
             "2026-05-31",
             DreamClassification.LUCID,
             List.of("door"));
@@ -613,7 +704,7 @@ public class DreamServiceTest {
 
     assertEquals(null, reloaded.getUserClassification());
     assertEquals(DreamClassification.NIGHTMARE, reloaded.getEffectiveClassification());
-    assertEquals(ClassificationSource.ANALYSIS, reloaded.getClassificationSource());
+    assertEquals(ClassificationSource.INFERRED, reloaded.getClassificationSource());
   }
 
   @Test
@@ -639,7 +730,7 @@ public class DreamServiceTest {
 
     assertEquals(DreamClassification.RECURRING, reloaded.getInferredClassification());
     assertEquals(DreamClassification.RECURRING, reloaded.getEffectiveClassification());
-    assertEquals(ClassificationSource.PATTERN_ENGINE, reloaded.getClassificationSource());
+    assertEquals(ClassificationSource.INFERRED, reloaded.getClassificationSource());
   }
 
   @Test
@@ -658,7 +749,7 @@ public class DreamServiceTest {
     DreamEntry reloaded = repository.findById(dream.getId());
 
     assertEquals(DreamClassification.NEUTRAL, reloaded.getEffectiveClassification());
-    assertEquals(ClassificationSource.ANALYSIS, reloaded.getClassificationSource());
+    assertEquals(ClassificationSource.INFERRED, reloaded.getClassificationSource());
   }
 
   @Test
@@ -698,8 +789,8 @@ public class DreamServiceTest {
     dreamService.analyzeDream(dream.getId());
     DreamEntry reloaded = dreamService.getDreamClassification(dream.getId());
 
-    assertEquals(ClassificationSource.ANALYSIS, reloaded.getClassificationSource());
-    assertTrue(reloaded.getClassificationReason().contains("nightmare"));
+    assertEquals(ClassificationSource.INFERRED, reloaded.getClassificationSource());
+    assertTrue(reloaded.getClassificationReason().contains("fear"));
   }
 
   @Test
@@ -865,6 +956,7 @@ CREATE TABLE dreams (
     effective_classification TEXT NOT NULL DEFAULT 'UNKNOWN',
     classification_source TEXT NOT NULL DEFAULT 'UNKNOWN',
     classification_reason TEXT,
+    type_confidence REAL,
     classification_updated_at INTEGER
 );
 """);
@@ -902,6 +994,19 @@ CREATE TABLE analysis_runs (
     analysis_result TEXT,
     failure_reason TEXT,
     FOREIGN KEY (dream_id) REFERENCES dreams(id) ON DELETE CASCADE
+);
+""");
+      stmt.execute(
+          """
+CREATE TABLE dream_questions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dream_id INTEGER NOT NULL,
+    analysis_run_id INTEGER,
+    question TEXT NOT NULL,
+    answer TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (dream_id) REFERENCES dreams(id) ON DELETE CASCADE,
+    FOREIGN KEY (analysis_run_id) REFERENCES analysis_runs(id)
 );
 """);
     }

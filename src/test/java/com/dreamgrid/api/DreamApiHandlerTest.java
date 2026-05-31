@@ -244,6 +244,7 @@ CREATE TABLE dreams (
     effective_classification TEXT NOT NULL DEFAULT 'UNKNOWN',
     classification_source TEXT NOT NULL DEFAULT 'UNKNOWN',
     classification_reason TEXT,
+    type_confidence REAL,
     classification_updated_at INTEGER
 );
 """);
@@ -281,6 +282,19 @@ CREATE TABLE analysis_runs (
     analysis_result TEXT,
     failure_reason TEXT,
     FOREIGN KEY (dream_id) REFERENCES dreams(id) ON DELETE CASCADE
+);
+""");
+      stmt.execute(
+          """
+CREATE TABLE dream_questions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dream_id INTEGER NOT NULL,
+    analysis_run_id INTEGER,
+    question TEXT NOT NULL,
+    answer TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    FOREIGN KEY (dream_id) REFERENCES dreams(id) ON DELETE CASCADE,
+    FOREIGN KEY (analysis_run_id) REFERENCES analysis_runs(id)
 );
 """);
     }

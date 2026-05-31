@@ -3,17 +3,18 @@ package com.dreamgrid.api;
 import com.dreamgrid.dto.AnalysisResponse;
 import com.dreamgrid.dto.AnalysisRunResponse;
 import com.dreamgrid.dto.DreamClassificationResponse;
+import com.dreamgrid.dto.DreamQuestionResponse;
 import com.dreamgrid.dto.DreamRequest;
 import com.dreamgrid.dto.DreamResponse;
 import com.dreamgrid.dto.ErrorResponse;
 import com.dreamgrid.dto.QuestionRequest;
-import com.dreamgrid.dto.QuestionResponse;
 import com.dreamgrid.dto.TagResponse;
 import com.dreamgrid.dto.UpdateDreamClassificationRequest;
 import com.dreamgrid.dto.UpdateDreamRequest;
 import com.dreamgrid.model.AnalysisRun;
 import com.dreamgrid.model.DreamClassification;
 import com.dreamgrid.model.DreamEntry;
+import com.dreamgrid.model.DreamQuestion;
 import com.dreamgrid.service.DreamGridException;
 import com.dreamgrid.service.DreamService;
 import com.google.gson.Gson;
@@ -82,6 +83,10 @@ public class DreamApiHandler implements HttpHandler {
         handleAnalyzeDream(exchange, true);
       } else if (path.matches("/dreams/\\d+/questions$") && "POST".equals(method)) {
         handleQuestion(exchange);
+      } else if (path.matches("/dreams/\\d+/questions$") && "GET".equals(method)) {
+        handleQuestionHistory(exchange);
+      } else if (path.matches("/dreams/\\d+/questions/\\d+$") && "GET".equals(method)) {
+        handleQuestionById(exchange);
       } else {
         sendError(exchange, 404, ApiErrorCode.NOT_FOUND, "Endpoint not found");
       }
@@ -375,8 +380,13 @@ public class DreamApiHandler implements HttpHandler {
 
       String question = request != null ? request.getQuestion() : null;
       String answer = dreamService.askQuestionAboutDream(dreamId, question);
-      QuestionResponse response = new QuestionResponse(dreamId, question, answer);
-      sendJsonResponse(exchange, 200, gson.toJson(response));
+      DreamQuestion latest =
+          dreamService.getQuestionHistory(dreamId).stream().findFirst().orElse(null);
+      if (latest == null) {
+        sendError(exchange, 500, ApiErrorCode.INTERNAL_ERROR, "Failed to persist question");
+        return;
+      }
+      sendJsonResponse(exchange, 200, gson.toJson(toQuestionResponse(latest)));
     } catch (JsonSyntaxException e) {
       sendError(exchange, 400, ApiErrorCode.VALIDATION_ERROR, "Invalid JSON request body");
     } catch (DreamGridException e) {
@@ -391,6 +401,33 @@ public class DreamApiHandler implements HttpHandler {
           502,
           ApiErrorCode.ANALYSIS_SERVICE_ERROR,
           "Analysis API error: " + e.getMessage());
+    }
+  }
+
+  private void handleQuestionHistory(HttpExchange exchange) throws IOException {
+    try {
+      int dreamId = extractDreamId(exchange.getRequestURI().getPath());
+      List<DreamQuestionResponse> responses =
+          dreamService.getQuestionHistory(dreamId).stream()
+              .map(this::toQuestionResponse)
+              .collect(Collectors.toList());
+      sendJsonResponse(exchange, 200, gson.toJson(responses));
+    } catch (SQLException e) {
+      logger.log(Level.SEVERE, "Database error getting question history", e);
+      sendError(exchange, 500, ApiErrorCode.INTERNAL_ERROR, "Database error: " + e.getMessage());
+    }
+  }
+
+  private void handleQuestionById(HttpExchange exchange) throws IOException {
+    try {
+      String[] parts = exchange.getRequestURI().getPath().split("/");
+      int dreamId = Integer.parseInt(parts[2]);
+      int questionId = Integer.parseInt(parts[4]);
+      DreamQuestion question = dreamService.getQuestionById(dreamId, questionId);
+      sendJsonResponse(exchange, 200, gson.toJson(toQuestionResponse(question)));
+    } catch (SQLException e) {
+      logger.log(Level.SEVERE, "Database error getting question by id", e);
+      sendError(exchange, 500, ApiErrorCode.INTERNAL_ERROR, "Database error: " + e.getMessage());
     }
   }
 
@@ -422,6 +459,7 @@ public class DreamApiHandler implements HttpHandler {
         dream.getEffectiveClassification(),
         dream.getClassificationSource(),
         dream.getClassificationReason(),
+        dream.getTypeConfidence(),
         dream.getClassificationUpdatedAt());
   }
 
@@ -432,6 +470,7 @@ public class DreamApiHandler implements HttpHandler {
         dream.getEffectiveClassification(),
         dream.getClassificationSource(),
         dream.getClassificationReason(),
+        dream.getTypeConfidence(),
         dream.getClassificationUpdatedAt());
   }
 
@@ -445,6 +484,16 @@ public class DreamApiHandler implements HttpHandler {
         run.getAnalysisVersion(),
         run.getAnalysisResult(),
         run.getFailureReason());
+  }
+
+  private DreamQuestionResponse toQuestionResponse(DreamQuestion question) {
+    return new DreamQuestionResponse(
+        question.getId(),
+        question.getDreamId(),
+        question.getAnalysisRunId(),
+        question.getQuestion(),
+        question.getAnswer(),
+        question.getCreatedAt());
   }
 
   private String readRequestBody(HttpExchange exchange) throws IOException {

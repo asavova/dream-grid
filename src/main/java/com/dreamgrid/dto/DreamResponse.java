@@ -23,6 +23,7 @@ public class DreamResponse {
   private DreamClassification effectiveClassification;
   private ClassificationSource classificationSource;
   private String classificationReason;
+  private Double typeConfidence;
   private Long classificationUpdatedAt;
 
   public DreamResponse() {}
@@ -44,6 +45,7 @@ public class DreamResponse {
       DreamClassification effectiveClassification,
       ClassificationSource classificationSource,
       String classificationReason,
+      Double typeConfidence,
       Long classificationUpdatedAt) {
     this.id = id;
     this.title = title;
@@ -61,6 +63,7 @@ public class DreamResponse {
     this.effectiveClassification = effectiveClassification;
     this.classificationSource = classificationSource;
     this.classificationReason = classificationReason;
+    this.typeConfidence = typeConfidence;
     this.classificationUpdatedAt = classificationUpdatedAt;
   }
 
@@ -198,5 +201,29 @@ public class DreamResponse {
 
   public void setClassificationUpdatedAt(Long classificationUpdatedAt) {
     this.classificationUpdatedAt = classificationUpdatedAt;
+  }
+
+  public Double getTypeConfidence() {
+    return typeConfidence;
+  }
+
+  public void setTypeConfidence(Double typeConfidence) {
+    this.typeConfidence = typeConfidence;
+  }
+
+  public DreamClassification getUserType() {
+    return userClassification;
+  }
+
+  public DreamClassification getInferredType() {
+    return inferredClassification;
+  }
+
+  public DreamClassification getEffectiveType() {
+    return effectiveClassification;
+  }
+
+  public ClassificationSource getTypeSource() {
+    return classificationSource;
   }
 }
