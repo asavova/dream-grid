@@ -11,6 +11,12 @@ public abstract class AbstractDream implements IDreamEntry {
   protected Long analyzedAt;
   protected String analysisVersion;
   protected AnalysisStatus analysisStatus;
+  protected DreamClassification userClassification;
+  protected DreamClassification inferredClassification;
+  protected DreamClassification effectiveClassification;
+  protected ClassificationSource classificationSource;
+  protected String classificationReason;
+  protected Long classificationUpdatedAt;
 
   public AbstractDream(String title, String content, String dreamDate, long timestamp) {
     this.title = title;
@@ -19,6 +25,8 @@ public abstract class AbstractDream implements IDreamEntry {
     this.timestamp = timestamp;
     this.analyzed = false;
     this.analysisStatus = AnalysisStatus.PENDING;
+    this.effectiveClassification = DreamClassification.UNKNOWN;
+    this.classificationSource = ClassificationSource.UNKNOWN;
   }
 
   public int getId() {
@@ -85,5 +93,55 @@ public abstract class AbstractDream implements IDreamEntry {
   public void setAnalysisStatus(AnalysisStatus analysisStatus) {
     this.analysisStatus = analysisStatus != null ? analysisStatus : AnalysisStatus.PENDING;
     this.analyzed = this.analysisStatus == AnalysisStatus.COMPLETED;
+  }
+
+  public DreamClassification getUserClassification() {
+    return userClassification;
+  }
+
+  public void setUserClassification(DreamClassification userClassification) {
+    this.userClassification = userClassification;
+  }
+
+  public DreamClassification getInferredClassification() {
+    return inferredClassification;
+  }
+
+  public void setInferredClassification(DreamClassification inferredClassification) {
+    this.inferredClassification = inferredClassification;
+  }
+
+  public DreamClassification getEffectiveClassification() {
+    return effectiveClassification != null ? effectiveClassification : DreamClassification.UNKNOWN;
+  }
+
+  public void setEffectiveClassification(DreamClassification effectiveClassification) {
+    this.effectiveClassification =
+        effectiveClassification != null ? effectiveClassification : DreamClassification.UNKNOWN;
+  }
+
+  public ClassificationSource getClassificationSource() {
+    return classificationSource != null ? classificationSource : ClassificationSource.UNKNOWN;
+  }
+
+  public void setClassificationSource(ClassificationSource classificationSource) {
+    this.classificationSource =
+        classificationSource != null ? classificationSource : ClassificationSource.UNKNOWN;
+  }
+
+  public String getClassificationReason() {
+    return classificationReason;
+  }
+
+  public void setClassificationReason(String classificationReason) {
+    this.classificationReason = classificationReason;
+  }
+
+  public Long getClassificationUpdatedAt() {
+    return classificationUpdatedAt;
+  }
+
+  public void setClassificationUpdatedAt(Long classificationUpdatedAt) {
+    this.classificationUpdatedAt = classificationUpdatedAt;
   }
 }

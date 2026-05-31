@@ -7,9 +7,10 @@ import static org.junit.Assert.assertTrue;
 import com.dreamgrid.api.ApiErrorCode;
 import com.dreamgrid.client.DreamAnalysisClient;
 import com.dreamgrid.model.AnalysisStatus;
+import com.dreamgrid.model.ClassificationSource;
+import com.dreamgrid.model.DreamClassification;
 import com.dreamgrid.model.DreamEntry;
 import com.dreamgrid.model.DreamTag;
-import com.dreamgrid.model.DreamType;
 import com.dreamgrid.repository.DreamRepository;
 import java.io.IOException;
 import java.sql.Connection;
@@ -113,7 +114,7 @@ public class DreamServiceTest {
             "2026-05-31",
             123L,
             List.of(),
-            DreamType.VISION);
+            DreamClassification.NEUTRAL);
     repository.insert(dream);
     analysisClient.nextResult =
         "{\"summary\":\"A transition dream.\",\"detectedSymbols\":[\"SKY\"],\"modelVersion\":\"python-model-2026-05\"}";
@@ -149,7 +150,7 @@ public class DreamServiceTest {
             "2026-05-31",
             123L,
             List.of(),
-            DreamType.VISION);
+            DreamClassification.NEUTRAL);
     repository.insert(dream);
 
     DreamGridException exception =
@@ -169,7 +170,7 @@ public class DreamServiceTest {
             "Tagged Dream",
             "A dream about fire.",
             "2026-05-31",
-            DreamType.ORDINARY,
+            DreamClassification.NEUTRAL,
             List.of(" fire ", "FIRE", "", "sky", "not-a-symbol"));
 
     DreamEntry reloaded = repository.findById(dream.getId());
@@ -181,12 +182,16 @@ public class DreamServiceTest {
   public void searchByTagReturnsMatchingDreams() throws Exception {
     DreamEntry fireDream =
         dreamService.saveDream(
-            "Fire Dream", "The horizon burned.", "2026-05-31", DreamType.VISION, List.of("fire"));
+            "Fire Dream",
+            "The horizon burned.",
+            "2026-05-31",
+            DreamClassification.UNKNOWN,
+            List.of("fire"));
     dreamService.saveDream(
         "Water Dream",
         "Rain covered the road.",
         "2026-05-31",
-        DreamType.ORDINARY,
+        DreamClassification.NEUTRAL,
         List.of("water"));
 
     List<DreamEntry> results = dreamService.getDreamsByTag(" FIRE ");
@@ -199,12 +204,16 @@ public class DreamServiceTest {
   public void keywordSearchChecksTitleAndContent() throws Exception {
     DreamEntry titleMatch =
         dreamService.saveDream(
-            "Ocean Door", "I was in a quiet room.", "2026-05-31", DreamType.ORDINARY, null);
+            "Ocean Door",
+            "I was in a quiet room.",
+            "2026-05-31",
+            DreamClassification.NEUTRAL,
+            null);
     DreamEntry contentMatch =
         dreamService.saveDream(
-            "Plain Dream", "The ocean was dark.", "2026-05-31", DreamType.ORDINARY, null);
+            "Plain Dream", "The ocean was dark.", "2026-05-31", DreamClassification.NEUTRAL, null);
     dreamService.saveDream(
-        "Sky Dream", "Birds crossed the sky.", "2026-05-31", DreamType.ORDINARY, null);
+        "Sky Dream", "Birds crossed the sky.", "2026-05-31", DreamClassification.NEUTRAL, null);
 
     List<Integer> resultIds =
         dreamService.searchDreams("ocean").stream().map(DreamEntry::getId).toList();
@@ -219,7 +228,7 @@ public class DreamServiceTest {
     DreamEntry completed = completedDream("cached analysis", 100L, EXPECTED_ANALYSIS_VERSION);
     repository.insert(completed);
     dreamService.saveDream(
-        "Pending Dream", "No analysis yet.", "2026-05-31", DreamType.ORDINARY, null);
+        "Pending Dream", "No analysis yet.", "2026-05-31", DreamClassification.NEUTRAL, null);
 
     List<DreamEntry> results = dreamService.filterDreams(null, "completed", null);
 
@@ -230,7 +239,11 @@ public class DreamServiceTest {
   @Test
   public void tagWithNoLinksReturnsEmptyResult() throws Exception {
     dreamService.saveDream(
-        "Fire Dream", "The horizon burned.", "2026-05-31", DreamType.VISION, List.of("fire"));
+        "Fire Dream",
+        "The horizon burned.",
+        "2026-05-31",
+        DreamClassification.UNKNOWN,
+        List.of("fire"));
 
     List<DreamEntry> results = dreamService.getDreamsByTag("not-a-symbol");
 
@@ -240,10 +253,19 @@ public class DreamServiceTest {
   @Test
   public void tagUsageCountsAreCorrect() throws Exception {
     dreamService.saveDream(
-        "Fire Sky", "A bright dream.", "2026-05-31", DreamType.VISION, List.of("fire", "sky"));
+        "Fire Sky",
+        "A bright dream.",
+        "2026-05-31",
+        DreamClassification.UNKNOWN,
+        List.of("fire", "sky"));
     dreamService.saveDream(
-        "Fire", "Another bright dream.", "2026-05-31", DreamType.VISION, List.of("fire"));
-    dreamService.saveDream("Plain", "No specific tag.", "2026-05-31", DreamType.ORDINARY, null);
+        "Fire",
+        "Another bright dream.",
+        "2026-05-31",
+        DreamClassification.UNKNOWN,
+        List.of("fire"));
+    dreamService.saveDream(
+        "Plain", "No specific tag.", "2026-05-31", DreamClassification.NEUTRAL, null);
 
     assertEquals(2, tagCount("fire"));
     assertEquals(1, tagCount("sky"));
@@ -256,7 +278,7 @@ public class DreamServiceTest {
             "Manual",
             "A mirror in the forest.",
             "2026-05-31",
-            DreamType.ORDINARY,
+            DreamClassification.NEUTRAL,
             List.of("forest"));
     analysisClient.nextResult =
         "{\"summary\":\"ok\",\"detectedSymbols\":[\"mirror\"],\"detectedThemes\":[\"reflection\"],\"confidenceScore\":0.75}";
@@ -273,7 +295,11 @@ public class DreamServiceTest {
   public void analysisGeneratedTagsAreReplacedAfterReanalysis() throws Exception {
     DreamEntry dream =
         dreamService.saveDream(
-            "Analysis", "A changing dream.", "2026-05-31", DreamType.ORDINARY, List.of("manual"));
+            "Analysis",
+            "A changing dream.",
+            "2026-05-31",
+            DreamClassification.NEUTRAL,
+            List.of("manual"));
     analysisClient.nextResult =
         "{\"summary\":\"ok\",\"detectedSymbols\":[\"fire\"],\"detectedThemes\":[\"change\"],\"confidenceScore\":0.8}";
     dreamService.reanalyzeDream(dream.getId());
@@ -294,9 +320,13 @@ public class DreamServiceTest {
   public void deletingDreamRemovesTagLinksButKeepsTagDefinitions() throws Exception {
     DreamEntry first =
         dreamService.saveDream(
-            "First", "A fire dream.", "2026-05-31", DreamType.ORDINARY, List.of("fire"));
+            "First", "A fire dream.", "2026-05-31", DreamClassification.NEUTRAL, List.of("fire"));
     dreamService.saveDream(
-        "Second", "Another fire dream.", "2026-05-31", DreamType.ORDINARY, List.of("fire"));
+        "Second",
+        "Another fire dream.",
+        "2026-05-31",
+        DreamClassification.NEUTRAL,
+        List.of("fire"));
 
     repository.deleteById(first.getId());
 
@@ -305,11 +335,191 @@ public class DreamServiceTest {
   }
 
   @Test
+  public void dreamWithoutClassificationStartsUnknown() throws Exception {
+    DreamEntry dream =
+        dreamService.saveDream(
+            "Unclassified",
+            "A quiet dream.",
+            "2026-05-31",
+            (DreamClassification) null,
+            List.of("quiet"));
+
+    DreamEntry reloaded = repository.findById(dream.getId());
+
+    assertEquals(DreamClassification.UNKNOWN, reloaded.getEffectiveClassification());
+    assertEquals(ClassificationSource.UNKNOWN, reloaded.getClassificationSource());
+  }
+
+  @Test
+  public void userProvidedClassificationBecomesEffectiveClassification() throws Exception {
+    DreamEntry dream =
+        dreamService.saveDream(
+            "Lucid", "I knew I was dreaming.", "2026-05-31", DreamClassification.LUCID, null);
+
+    DreamEntry reloaded = repository.findById(dream.getId());
+
+    assertEquals(DreamClassification.LUCID, reloaded.getUserClassification());
+    assertEquals(DreamClassification.LUCID, reloaded.getEffectiveClassification());
+    assertEquals(ClassificationSource.USER, reloaded.getClassificationSource());
+  }
+
+  @Test
+  public void analysisInferenceUpdatesEffectiveClassificationWithoutUserOverride()
+      throws Exception {
+    DreamEntry dream =
+        dreamService.saveDream(
+            "Nightmare",
+            "I was running in fear.",
+            "2026-05-31",
+            (DreamClassification) null,
+            List.of("fear"));
+    analysisClient.nextResult =
+        "{\"summary\":\"A nightmare with panic.\",\"detectedThemes\":[\"nightmare\"],\"confidenceScore\":0.8}";
+
+    dreamService.analyzeDream(dream.getId());
+    DreamEntry reloaded = repository.findById(dream.getId());
+
+    assertEquals(DreamClassification.NIGHTMARE, reloaded.getInferredClassification());
+    assertEquals(DreamClassification.NIGHTMARE, reloaded.getEffectiveClassification());
+    assertEquals(ClassificationSource.ANALYSIS, reloaded.getClassificationSource());
+    assertTrue(reloaded.getClassificationReason().contains("nightmare"));
+  }
+
+  @Test
+  public void userOverrideIsPreservedAfterReanalysis() throws Exception {
+    DreamEntry dream =
+        dreamService.saveDream(
+            "Override",
+            "A strange dream.",
+            "2026-05-31",
+            DreamClassification.LUCID,
+            List.of("door"));
+    analysisClient.nextResult =
+        "{\"summary\":\"A nightmare with panic.\",\"detectedThemes\":[\"nightmare\"],\"confidenceScore\":0.8}";
+
+    dreamService.reanalyzeDream(dream.getId());
+    DreamEntry reloaded = repository.findById(dream.getId());
+
+    assertEquals(DreamClassification.LUCID, reloaded.getUserClassification());
+    assertEquals(DreamClassification.NIGHTMARE, reloaded.getInferredClassification());
+    assertEquals(DreamClassification.LUCID, reloaded.getEffectiveClassification());
+    assertEquals(ClassificationSource.USER, reloaded.getClassificationSource());
+  }
+
+  @Test
+  public void clearingUserOverrideRestoresInferredClassification() throws Exception {
+    DreamEntry dream =
+        dreamService.saveDream(
+            "Override",
+            "A strange dream.",
+            "2026-05-31",
+            DreamClassification.LUCID,
+            List.of("door"));
+    analysisClient.nextResult =
+        "{\"summary\":\"A nightmare with panic.\",\"detectedThemes\":[\"nightmare\"],\"confidenceScore\":0.8}";
+    dreamService.reanalyzeDream(dream.getId());
+
+    DreamEntry reloaded = dreamService.clearDreamClassificationOverride(dream.getId());
+
+    assertEquals(null, reloaded.getUserClassification());
+    assertEquals(DreamClassification.NIGHTMARE, reloaded.getEffectiveClassification());
+    assertEquals(ClassificationSource.ANALYSIS, reloaded.getClassificationSource());
+  }
+
+  @Test
+  public void recurringClassificationRequiresHistoricalTagOverlap() throws Exception {
+    dreamService.saveDream(
+        "Earlier",
+        "A forest mirror.",
+        "2026-05-30",
+        (DreamClassification) null,
+        List.of("forest", "mirror"));
+    DreamEntry dream =
+        dreamService.saveDream(
+            "Current",
+            "Another forest mirror.",
+            "2026-05-31",
+            (DreamClassification) null,
+            List.of("forest", "mirror"));
+    analysisClient.nextResult =
+        "{\"summary\":\"A neutral dream.\",\"detectedThemes\":[\"reflection\"],\"confidenceScore\":0.6}";
+
+    dreamService.analyzeDream(dream.getId());
+    DreamEntry reloaded = repository.findById(dream.getId());
+
+    assertEquals(DreamClassification.RECURRING, reloaded.getInferredClassification());
+    assertEquals(DreamClassification.RECURRING, reloaded.getEffectiveClassification());
+    assertEquals(ClassificationSource.PATTERN_ENGINE, reloaded.getClassificationSource());
+  }
+
+  @Test
+  public void recurringClassificationDoesNotTriggerWithOnlyOneDream() throws Exception {
+    DreamEntry dream =
+        dreamService.saveDream(
+            "Current",
+            "A forest mirror.",
+            "2026-05-31",
+            (DreamClassification) null,
+            List.of("forest", "mirror"));
+    analysisClient.nextResult =
+        "{\"summary\":\"A neutral dream.\",\"detectedThemes\":[\"reflection\"],\"confidenceScore\":0.6}";
+
+    dreamService.analyzeDream(dream.getId());
+    DreamEntry reloaded = repository.findById(dream.getId());
+
+    assertEquals(DreamClassification.NEUTRAL, reloaded.getEffectiveClassification());
+    assertEquals(ClassificationSource.ANALYSIS, reloaded.getClassificationSource());
+  }
+
+  @Test
+  public void invalidClassificationReturnsValidationError() throws Exception {
+    DreamEntry dream =
+        dreamService.saveDream(
+            "Valid", "A quiet dream.", "2026-05-31", (DreamClassification) null, List.of("quiet"));
+
+    DreamGridException exception =
+        assertThrows(
+            DreamGridException.class,
+            () -> dreamService.updateDreamClassification(dream.getId(), "ORDINARY"));
+
+    assertEquals(ApiErrorCode.VALIDATION_ERROR, exception.getErrorCode());
+  }
+
+  @Test
+  public void missingDreamClassificationReturnsNotFound() {
+    DreamGridException exception =
+        assertThrows(DreamGridException.class, () -> dreamService.getDreamClassification(999));
+
+    assertEquals(ApiErrorCode.NOT_FOUND, exception.getErrorCode());
+  }
+
+  @Test
+  public void classificationResponseStateContainsSourceAndReason() throws Exception {
+    DreamEntry dream =
+        dreamService.saveDream(
+            "Nightmare",
+            "I was chased.",
+            "2026-05-31",
+            (DreamClassification) null,
+            List.of("chase"));
+    analysisClient.nextResult =
+        "{\"summary\":\"A nightmare with panic.\",\"detectedThemes\":[\"nightmare\"],\"confidenceScore\":0.8}";
+
+    dreamService.analyzeDream(dream.getId());
+    DreamEntry reloaded = dreamService.getDreamClassification(dream.getId());
+
+    assertEquals(ClassificationSource.ANALYSIS, reloaded.getClassificationSource());
+    assertTrue(reloaded.getClassificationReason().contains("nightmare"));
+  }
+
+  @Test
   public void blankDreamContentIsRejected() {
     DreamGridException exception =
         assertThrows(
             DreamGridException.class,
-            () -> dreamService.saveDream("Blank", "   ", "2026-05-31", DreamType.ORDINARY, null));
+            () ->
+                dreamService.saveDream(
+                    "Blank", "   ", "2026-05-31", DreamClassification.NEUTRAL, null));
 
     assertEquals(ApiErrorCode.VALIDATION_ERROR, exception.getErrorCode());
     assertEquals("Dream content must not be blank", exception.getMessage());
@@ -341,7 +551,7 @@ public class DreamServiceTest {
             "2026-05-31",
             123L,
             List.of(),
-            DreamType.ORDINARY);
+            DreamClassification.NEUTRAL);
     repository.insert(dream);
 
     DreamGridException exception =
@@ -397,7 +607,7 @@ public class DreamServiceTest {
             DreamGridException.class,
             () ->
                 dreamService.saveDream(
-                    "Bad Date", "Valid content", "31-05-2026", DreamType.ORDINARY, null));
+                    "Bad Date", "Valid content", "31-05-2026", DreamClassification.NEUTRAL, null));
 
     assertEquals(ApiErrorCode.VALIDATION_ERROR, exception.getErrorCode());
   }
@@ -410,7 +620,7 @@ public class DreamServiceTest {
             "2026-05-31",
             123L,
             List.of(),
-            DreamType.VISION);
+            DreamClassification.NEUTRAL);
     dream.completeAnalysis(analysis, analyzedAt, version);
     return dream;
   }
@@ -444,7 +654,13 @@ CREATE TABLE dreams (
     analysis_result TEXT,
     analyzed_at INTEGER,
     analysis_version TEXT,
-    analysis_status TEXT NOT NULL DEFAULT 'PENDING'
+    analysis_status TEXT NOT NULL DEFAULT 'PENDING',
+    user_classification TEXT,
+    inferred_classification TEXT,
+    effective_classification TEXT NOT NULL DEFAULT 'UNKNOWN',
+    classification_source TEXT NOT NULL DEFAULT 'UNKNOWN',
+    classification_reason TEXT,
+    classification_updated_at INTEGER
 );
 """);
       stmt.execute(

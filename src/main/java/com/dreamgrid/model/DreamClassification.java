@@ -1,10 +1,9 @@
 package com.dreamgrid.model;
 
-public enum DreamType {
+public enum DreamClassification {
   LUCID,
   NIGHTMARE,
   RECURRING,
-  VISION,
-  ORDINARY,
-  NONE
+  NEUTRAL,
+  UNKNOWN
 }

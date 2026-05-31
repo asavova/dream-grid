@@ -3,7 +3,7 @@ package com.dreamgrid.api;
 import static org.junit.Assert.assertEquals;
 
 import com.dreamgrid.client.DreamAnalysisClient;
-import com.dreamgrid.model.DreamType;
+import com.dreamgrid.model.DreamClassification;
 import com.dreamgrid.repository.DreamRepository;
 import com.dreamgrid.service.DreamService;
 import com.google.gson.JsonArray;
@@ -70,7 +70,7 @@ public class DreamApiHandlerTest {
   public void analysisServiceFailureReturnsStructuredError() throws Exception {
     repository.insert(
         new com.dreamgrid.model.DreamEntry(
-            "Dream", "A safe dream.", "2026-05-31", 123L, List.of(), DreamType.ORDINARY));
+            "Dream", "A safe dream.", "2026-05-31", 123L, List.of(), DreamClassification.NEUTRAL));
     analysisClient.nextFailure = new IOException("service unavailable");
 
     Response response = post("/dreams/1/analyze", "");
@@ -83,7 +83,11 @@ public class DreamApiHandlerTest {
   @Test
   public void tagsEndpointReturnsUsageCounts() throws Exception {
     dreamService.saveDream(
-        "Forest", "A quiet forest.", "2026-05-31", DreamType.ORDINARY, List.of("Forest", "forest"));
+        "Forest",
+        "A quiet forest.",
+        "2026-05-31",
+        DreamClassification.NEUTRAL,
+        List.of("Forest", "forest"));
 
     Response response = get("/tags");
     JsonArray body = JsonParser.parseString(response.body()).getAsJsonArray();
@@ -93,9 +97,60 @@ public class DreamApiHandlerTest {
     assertEquals(1, body.get(0).getAsJsonObject().get("count").getAsInt());
   }
 
+  @Test
+  public void classificationEndpointReturnsUpdatedUserOverride() throws Exception {
+    dreamService.saveDream(
+        "Dream", "A quiet dream.", "2026-05-31", DreamClassification.UNKNOWN, List.of("quiet"));
+
+    Response update = put("/dreams/1/classification", "{\"classification\":\"LUCID\"}");
+    JsonObject updatedBody = JsonParser.parseString(update.body()).getAsJsonObject();
+    Response read = get("/dreams/1/classification");
+    JsonObject readBody = JsonParser.parseString(read.body()).getAsJsonObject();
+
+    assertEquals(200, update.statusCode());
+    assertEquals("LUCID", updatedBody.get("effectiveClassification").getAsString());
+    assertEquals("USER", readBody.get("classificationSource").getAsString());
+  }
+
+  @Test
+  public void invalidClassificationReturnsStructuredValidationError() throws Exception {
+    dreamService.saveDream(
+        "Dream", "A quiet dream.", "2026-05-31", DreamClassification.UNKNOWN, List.of("quiet"));
+
+    Response response = put("/dreams/1/classification", "{\"classification\":\"ORDINARY\"}");
+    JsonObject body = JsonParser.parseString(response.body()).getAsJsonObject();
+
+    assertEquals(400, response.statusCode());
+    assertEquals("VALIDATION_ERROR", body.get("error").getAsString());
+  }
+
+  @Test
+  public void missingClassificationDreamReturnsNotFound() throws Exception {
+    Response response = get("/dreams/999/classification");
+    JsonObject body = JsonParser.parseString(response.body()).getAsJsonObject();
+
+    assertEquals(404, response.statusCode());
+    assertEquals("NOT_FOUND", body.get("error").getAsString());
+  }
+
   private Response get(String path) throws Exception {
     HttpURLConnection connection = (HttpURLConnection) new URL(baseUrl + path).openConnection();
     connection.setRequestMethod("GET");
+
+    int statusCode = connection.getResponseCode();
+    InputStream stream =
+        statusCode >= 400 ? connection.getErrorStream() : connection.getInputStream();
+    String response = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+    return new Response(statusCode, response);
+  }
+
+  private Response put(String path, String body) throws Exception {
+    HttpURLConnection connection = (HttpURLConnection) new URL(baseUrl + path).openConnection();
+    connection.setRequestMethod("PUT");
+    connection.setDoOutput(true);
+    try (OutputStream os = connection.getOutputStream()) {
+      os.write(body.getBytes(StandardCharsets.UTF_8));
+    }
 
     int statusCode = connection.getResponseCode();
     InputStream stream =
@@ -138,7 +193,13 @@ CREATE TABLE dreams (
     analysis_result TEXT,
     analyzed_at INTEGER,
     analysis_version TEXT,
-    analysis_status TEXT NOT NULL DEFAULT 'PENDING'
+    analysis_status TEXT NOT NULL DEFAULT 'PENDING',
+    user_classification TEXT,
+    inferred_classification TEXT,
+    effective_classification TEXT NOT NULL DEFAULT 'UNKNOWN',
+    classification_source TEXT NOT NULL DEFAULT 'UNKNOWN',
+    classification_reason TEXT,
+    classification_updated_at INTEGER
 );
 """);
       stmt.execute(

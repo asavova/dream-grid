@@ -1,14 +1,16 @@
 package com.dreamgrid.api;
 
 import com.dreamgrid.dto.AnalysisResponse;
+import com.dreamgrid.dto.DreamClassificationResponse;
 import com.dreamgrid.dto.DreamRequest;
 import com.dreamgrid.dto.DreamResponse;
 import com.dreamgrid.dto.ErrorResponse;
 import com.dreamgrid.dto.QuestionRequest;
 import com.dreamgrid.dto.QuestionResponse;
 import com.dreamgrid.dto.TagResponse;
+import com.dreamgrid.dto.UpdateDreamClassificationRequest;
+import com.dreamgrid.model.DreamClassification;
 import com.dreamgrid.model.DreamEntry;
-import com.dreamgrid.model.DreamType;
 import com.dreamgrid.service.DreamGridException;
 import com.dreamgrid.service.DreamService;
 import com.google.gson.Gson;
@@ -55,6 +57,12 @@ public class DreamApiHandler implements HttpHandler {
         handleListDreams(exchange);
       } else if ("/dreams".equals(path) && "POST".equals(method)) {
         handleCreateDream(exchange);
+      } else if (path.matches("/dreams/\\d+/classification$") && "GET".equals(method)) {
+        handleGetClassification(exchange);
+      } else if (path.matches("/dreams/\\d+/classification$") && "PUT".equals(method)) {
+        handleUpdateClassification(exchange);
+      } else if (path.matches("/dreams/\\d+/classification/override$") && "DELETE".equals(method)) {
+        handleClearClassificationOverride(exchange);
       } else if (path.matches("/dreams/\\d+$") && "GET".equals(method)) {
         handleGetDream(exchange);
       } else if (path.matches("/dreams/\\d+/analyze$") && "POST".equals(method)) {
@@ -82,9 +90,13 @@ public class DreamApiHandler implements HttpHandler {
   private void handleListDreams(HttpExchange exchange) throws IOException {
     try {
       Map<String, String> queryParams = parseQueryParams(exchange.getRequestURI().getRawQuery());
+      String classification =
+          queryParams.containsKey("classification")
+              ? queryParams.get("classification")
+              : queryParams.get("type");
       List<DreamEntry> dreams =
           dreamService.filterDreams(
-              queryParams.get("type"), queryParams.get("status"), queryParams.get("tag"));
+              classification, queryParams.get("status"), queryParams.get("tag"));
       sendDreamList(exchange, dreams);
     } catch (IllegalArgumentException e) {
       sendError(exchange, 400, ApiErrorCode.VALIDATION_ERROR, e.getMessage());
@@ -140,16 +152,18 @@ public class DreamApiHandler implements HttpHandler {
         return;
       }
 
-      DreamType dreamType = DreamType.NONE;
-      if (request.getType() != null && !request.getType().isBlank()) {
+      DreamClassification classification = null;
+      String requestedClassification =
+          request.getClassification() != null ? request.getClassification() : request.getType();
+      if (requestedClassification != null && !requestedClassification.isBlank()) {
         try {
-          dreamType = DreamType.valueOf(request.getType().toUpperCase());
+          classification = DreamClassification.valueOf(requestedClassification.toUpperCase());
         } catch (IllegalArgumentException e) {
           sendError(
               exchange,
               400,
               ApiErrorCode.VALIDATION_ERROR,
-              "Invalid dream type: " + request.getType());
+              "Invalid classification: " + requestedClassification);
           return;
         }
       }
@@ -159,7 +173,7 @@ public class DreamApiHandler implements HttpHandler {
               request.getTitle(),
               request.getContent(),
               request.getDate(),
-              dreamType,
+              classification,
               request.getTags());
 
       DreamResponse response = toDreamResponse(createdDream);
@@ -192,6 +206,45 @@ public class DreamApiHandler implements HttpHandler {
       sendJsonResponse(exchange, 200, jsonResponse);
     } catch (SQLException e) {
       logger.log(Level.SEVERE, "Database error getting dream", e);
+      sendError(exchange, 500, ApiErrorCode.INTERNAL_ERROR, "Database error: " + e.getMessage());
+    }
+  }
+
+  private void handleGetClassification(HttpExchange exchange) throws IOException {
+    try {
+      int dreamId = extractDreamId(exchange.getRequestURI().getPath());
+      DreamEntry dream = dreamService.getDreamClassification(dreamId);
+      sendJsonResponse(exchange, 200, gson.toJson(toClassificationResponse(dream)));
+    } catch (SQLException e) {
+      logger.log(Level.SEVERE, "Database error getting dream classification", e);
+      sendError(exchange, 500, ApiErrorCode.INTERNAL_ERROR, "Database error: " + e.getMessage());
+    }
+  }
+
+  private void handleUpdateClassification(HttpExchange exchange) throws IOException {
+    try {
+      int dreamId = extractDreamId(exchange.getRequestURI().getPath());
+      UpdateDreamClassificationRequest request =
+          gson.fromJson(readRequestBody(exchange), UpdateDreamClassificationRequest.class);
+      DreamEntry dream =
+          dreamService.updateDreamClassification(
+              dreamId, request != null ? request.getClassification() : null);
+      sendJsonResponse(exchange, 200, gson.toJson(toClassificationResponse(dream)));
+    } catch (JsonSyntaxException e) {
+      sendError(exchange, 400, ApiErrorCode.VALIDATION_ERROR, "Invalid JSON request body");
+    } catch (SQLException e) {
+      logger.log(Level.SEVERE, "Database error updating dream classification", e);
+      sendError(exchange, 500, ApiErrorCode.INTERNAL_ERROR, "Database error: " + e.getMessage());
+    }
+  }
+
+  private void handleClearClassificationOverride(HttpExchange exchange) throws IOException {
+    try {
+      int dreamId = extractDreamId(exchange.getRequestURI().getPath());
+      DreamEntry dream = dreamService.clearDreamClassificationOverride(dreamId);
+      sendJsonResponse(exchange, 200, gson.toJson(toClassificationResponse(dream)));
+    } catch (SQLException e) {
+      logger.log(Level.SEVERE, "Database error clearing dream classification", e);
       sendError(exchange, 500, ApiErrorCode.INTERNAL_ERROR, "Database error: " + e.getMessage());
     }
   }
@@ -280,12 +333,27 @@ public class DreamApiHandler implements HttpHandler {
         dream.getDreamDate(),
         dream.getTimestamp(),
         dream.getSymbolTags(),
-        dream.getDreamType(),
         dream.isAnalyzed(),
         dream.getAnalysisResult(),
         dream.getAnalyzedAt(),
         dream.getAnalysisVersion(),
-        dream.getAnalysisStatus());
+        dream.getAnalysisStatus(),
+        dream.getUserClassification(),
+        dream.getInferredClassification(),
+        dream.getEffectiveClassification(),
+        dream.getClassificationSource(),
+        dream.getClassificationReason(),
+        dream.getClassificationUpdatedAt());
+  }
+
+  private DreamClassificationResponse toClassificationResponse(DreamEntry dream) {
+    return new DreamClassificationResponse(
+        dream.getUserClassification(),
+        dream.getInferredClassification(),
+        dream.getEffectiveClassification(),
+        dream.getClassificationSource(),
+        dream.getClassificationReason(),
+        dream.getClassificationUpdatedAt());
   }
 
   private String readRequestBody(HttpExchange exchange) throws IOException {

@@ -10,7 +10,7 @@ DreamGrid is a local backend for storing dreams and running AI-assisted analysis
 - Store analysis result, status, timestamp, and version
 - Normalize dynamic dream tags into SQLite-backed tag tables
 - Search dreams by title or content
-- Filter dreams by type, analysis status, and tag
+- Filter dreams by classification, analysis status, and tag
 - List tag usage counts
 - Reuse cached analysis when it is still valid
 - Force a new analysis when needed
@@ -91,11 +91,17 @@ CREATE TABLE IF NOT EXISTS dreams (
     analysis_result TEXT,
     analyzed_at INTEGER,
     analysis_version TEXT,
-    analysis_status TEXT NOT NULL DEFAULT 'PENDING'
+    analysis_status TEXT NOT NULL DEFAULT 'PENDING',
+    user_classification TEXT,
+    inferred_classification TEXT,
+    effective_classification TEXT NOT NULL DEFAULT 'UNKNOWN',
+    classification_source TEXT NOT NULL DEFAULT 'UNKNOWN',
+    classification_reason TEXT,
+    classification_updated_at INTEGER
 );
 ```
 
-`analysis_status` is the main state field. `analyzed` and `symbol_tags` are kept as compatibility fields for older records.
+`analysis_status` tracks the analysis workflow. Classification is stored separately so user overrides and system inference can coexist. `analyzed`, `symbol_tags`, and `dream_type` are kept as compatibility fields for older records.
 
 Tags are stored in normalized tables:
 
@@ -191,7 +197,7 @@ GET  /dreams
 GET  /dreams/{id}
 GET  /dreams/search?query=...
 GET  /dreams/tags/{tag}
-GET  /dreams?type=...&status=...&tag=...
+GET  /dreams?classification=...&status=...&tag=...
 GET  /tags
 POST /dreams
 POST /dreams/{id}/analyze

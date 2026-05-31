@@ -28,7 +28,7 @@ SQLite            Python analysis service
 The Java code is organized by responsibility:
 
 - `api` parses HTTP requests and writes JSON responses.
-- `service` owns workflow decisions: tag normalization, search validation, cache use, reanalysis, failure handling, and question answering.
+- `service` owns workflow decisions: tag normalization, classification, search validation, cache use, reanalysis, failure handling, and question answering.
 - `repository` owns SQL and row mapping.
 - `database` opens the SQLite connection and creates or migrates the schema.
 - `client` contains the HTTP integration with the Python service.
@@ -63,9 +63,29 @@ Search and filtering are coordinated by `DreamService`, but the SQL stays in `Dr
 
 - keyword search over title and content
 - tag lookup
-- dream type
+- effective classification
 - analysis status
 - combined filtering through `GET /dreams`
+
+## Classification Flow
+
+Dream classification is stored separately from analysis status. `DreamClassification` provides the controlled classification values: `LUCID`, `NIGHTMARE`, `RECURRING`, `NEUTRAL`, and `UNKNOWN`.
+
+Classification has a source:
+
+- `USER` for explicit user overrides
+- `ANALYSIS` for deterministic inference from analysis text, themes, tags, and dream content
+- `PATTERN_ENGINE` for recurring-dream inference based on historical tag overlap
+- `UNKNOWN` when nothing has classified the dream yet
+
+`DreamClassificationService` applies the precedence rule:
+
+1. user classification
+2. pattern-based recurring inference
+3. analysis inference
+4. unknown
+
+User overrides do not delete inferred classification. Reanalysis can update inferred classification, but the effective classification remains the user override until the override is cleared.
 
 ## Analysis Flow
 
@@ -74,7 +94,9 @@ Search and filtering are coordinated by `DreamService`, but the SQL stays in `Dr
 3. If a valid completed analysis already exists, the stored result is returned.
 4. Otherwise the Java client calls the Python service.
 5. The response is stored with `COMPLETED` status, timestamp, and version.
-6. If the Python call fails, the status becomes `FAILED` and the previous successful result is kept.
+6. Analysis symbols and themes are stored as analysis-generated tags.
+7. Classification inference runs from the analysis result and stored tags.
+8. If the Python call fails, the status becomes `FAILED` and the previous successful result is kept.
 
 `POST /dreams/{id}/reanalyze` skips the cache and always calls the Python service.
 
@@ -91,4 +113,12 @@ Dreams are stored in SQLite in the `dreams` table. Analysis data currently lives
 - `analysis_version`
 - `analysis_status`
 
-This is enough for the current workflow and leaves a clear path to add analysis history or similarity scoring later.
+Classification state:
+
+- `user_classification`
+- `inferred_classification`
+- `effective_classification`
+- `classification_source`
+- `classification_reason`
+- `classification_updated_at`
+Tags are stored in a separate `dream_tags` table with normalized names and a many-to-many link table `dream_tag_links` that tracks the source of each tag.

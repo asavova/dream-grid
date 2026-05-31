@@ -2,9 +2,10 @@ package com.dreamgrid.repository;
 
 import com.dreamgrid.dto.TagUsage;
 import com.dreamgrid.model.AnalysisStatus;
+import com.dreamgrid.model.ClassificationSource;
+import com.dreamgrid.model.DreamClassification;
 import com.dreamgrid.model.DreamEntry;
 import com.dreamgrid.model.DreamTag;
-import com.dreamgrid.model.DreamType;
 import com.dreamgrid.model.TagSource;
 import java.sql.*;
 import java.util.ArrayList;
@@ -19,7 +20,15 @@ public class DreamRepository {
 
   public void insert(DreamEntry entry) throws SQLException {
     String sql =
-        "INSERT INTO dreams (title, content, dream_date, timestamp, symbol_tags, dream_type, analyzed, analysis_result, analyzed_at, analysis_version, analysis_status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+        """
+INSERT INTO dreams (
+  title, content, dream_date, timestamp, symbol_tags, dream_type,
+  analyzed, analysis_result, analyzed_at, analysis_version, analysis_status,
+  user_classification, inferred_classification, effective_classification,
+  classification_source, classification_reason,
+  classification_updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+""";
     try (PreparedStatement stmt =
         connection.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
       stmt.setString(1, entry.getTitle());
@@ -29,14 +38,19 @@ public class DreamRepository {
 
       stmt.setString(5, "");
 
-      DreamType type = entry.getDreamType();
-      stmt.setString(6, type != null ? type.name() : null);
+      stmt.setString(6, entry.getEffectiveClassification().name());
 
       stmt.setInt(7, entry.isAnalyzed() ? 1 : 0);
       stmt.setString(8, entry.getAnalysisResult());
       setNullableLong(stmt, 9, entry.getAnalyzedAt());
       stmt.setString(10, entry.getAnalysisVersion());
       stmt.setString(11, normalizeAnalysisStatus(entry.getAnalysisStatus()).name());
+      setNullableClassification(stmt, 12, entry.getUserClassification());
+      setNullableClassification(stmt, 13, entry.getInferredClassification());
+      stmt.setString(14, entry.getEffectiveClassification().name());
+      stmt.setString(15, entry.getClassificationSource().name());
+      stmt.setString(16, entry.getClassificationReason());
+      setNullableLong(stmt, 17, entry.getClassificationUpdatedAt());
 
       stmt.executeUpdate();
 
@@ -50,7 +64,15 @@ public class DreamRepository {
 
   public void update(DreamEntry entry) throws SQLException {
     String sql =
-        "UPDATE dreams SET title = ?, content = ?, dream_date = ?, timestamp = ?, symbol_tags = ?, dream_type = ?, analyzed = ?, analysis_result = ?, analyzed_at = ?, analysis_version = ?, analysis_status = ? WHERE id = ?";
+        """
+UPDATE dreams SET
+  title = ?, content = ?, dream_date = ?, timestamp = ?, symbol_tags = ?, dream_type = ?,
+  analyzed = ?, analysis_result = ?, analyzed_at = ?, analysis_version = ?, analysis_status = ?,
+  user_classification = ?, inferred_classification = ?, effective_classification = ?,
+  classification_source = ?, classification_reason = ?,
+  classification_updated_at = ?
+WHERE id = ?
+""";
     try (PreparedStatement stmt = connection.prepareStatement(sql)) {
       stmt.setString(1, entry.getTitle());
       stmt.setString(2, entry.getContent());
@@ -59,15 +81,20 @@ public class DreamRepository {
 
       stmt.setString(5, "");
 
-      DreamType type = entry.getDreamType();
-      stmt.setString(6, type != null ? type.name() : null);
+      stmt.setString(6, entry.getEffectiveClassification().name());
       stmt.setInt(7, entry.isAnalyzed() ? 1 : 0);
       stmt.setString(8, entry.getAnalysisResult());
       setNullableLong(stmt, 9, entry.getAnalyzedAt());
       stmt.setString(10, entry.getAnalysisVersion());
       stmt.setString(11, normalizeAnalysisStatus(entry.getAnalysisStatus()).name());
+      setNullableClassification(stmt, 12, entry.getUserClassification());
+      setNullableClassification(stmt, 13, entry.getInferredClassification());
+      stmt.setString(14, entry.getEffectiveClassification().name());
+      stmt.setString(15, entry.getClassificationSource().name());
+      stmt.setString(16, entry.getClassificationReason());
+      setNullableLong(stmt, 17, entry.getClassificationUpdatedAt());
 
-      stmt.setInt(12, entry.getId());
+      stmt.setInt(18, entry.getId());
 
       stmt.executeUpdate();
     }
@@ -88,12 +115,34 @@ public class DreamRepository {
     }
   }
 
-  public List<DreamEntry> findByTag(String normalizedTag) throws SQLException {
-    return findByFilters(null, null, null, normalizedTag);
+  public void updateClassificationFields(DreamEntry entry) throws SQLException {
+    String sql =
+        """
+UPDATE dreams SET
+  user_classification = ?,
+  inferred_classification = ?,
+  effective_classification = ?,
+  classification_source = ?,
+  classification_reason = ?,
+  classification_updated_at = ?,
+  dream_type = ?
+WHERE id = ?
+""";
+    try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+      setNullableClassification(stmt, 1, entry.getUserClassification());
+      setNullableClassification(stmt, 2, entry.getInferredClassification());
+      stmt.setString(3, entry.getEffectiveClassification().name());
+      stmt.setString(4, entry.getClassificationSource().name());
+      stmt.setString(5, entry.getClassificationReason());
+      setNullableLong(stmt, 6, entry.getClassificationUpdatedAt());
+      stmt.setString(7, entry.getEffectiveClassification().name());
+      stmt.setInt(8, entry.getId());
+      stmt.executeUpdate();
+    }
   }
 
-  public List<DreamEntry> findByDreamType(DreamType dreamType) throws SQLException {
-    return findByFilters(null, dreamType, null, null);
+  public List<DreamEntry> findByTag(String normalizedTag) throws SQLException {
+    return findByFilters(null, null, null, normalizedTag);
   }
 
   public List<DreamEntry> findByAnalysisStatus(AnalysisStatus analysisStatus) throws SQLException {
@@ -105,7 +154,10 @@ public class DreamRepository {
   }
 
   public List<DreamEntry> findByFilters(
-      String keyword, DreamType dreamType, AnalysisStatus analysisStatus, String normalizedTag)
+      String keyword,
+      DreamClassification classification,
+      AnalysisStatus analysisStatus,
+      String normalizedTag)
       throws SQLException {
     StringBuilder sql = new StringBuilder("SELECT * FROM dreams WHERE 1 = 1");
     List<SqlParameter> parameters = new ArrayList<>();
@@ -117,9 +169,9 @@ public class DreamRepository {
       parameters.add(stmt -> stmt.setString(pattern));
     }
 
-    if (dreamType != null) {
-      sql.append(" AND dream_type = ?");
-      parameters.add(stmt -> stmt.setString(dreamType.name()));
+    if (classification != null) {
+      sql.append(" AND effective_classification = ?");
+      parameters.add(stmt -> stmt.setString(classification.name()));
     }
 
     if (analysisStatus != null) {
@@ -301,6 +353,41 @@ ORDER BY t.normalized_name ASC, l.source ASC
     return tags;
   }
 
+  public int countDreamsSharingAtLeastTags(
+      int dreamId, List<String> normalizedTags, int minimumShared) throws SQLException {
+    if (normalizedTags == null || normalizedTags.isEmpty()) {
+      return 0;
+    }
+
+    String placeholders = String.join(",", normalizedTags.stream().map(tag -> "?").toList());
+    String sql =
+        """
+SELECT COUNT(*) AS matching_dreams
+FROM (
+  SELECT l.dream_id
+  FROM dream_tag_links l
+  JOIN dream_tags t ON t.id = l.tag_id
+  WHERE l.dream_id <> ? AND t.normalized_name IN (
+"""
+            + placeholders
+            + """
+)
+  GROUP BY l.dream_id
+  HAVING COUNT(DISTINCT t.normalized_name) >= ?
+)
+""";
+    try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+      stmt.setInt(1, dreamId);
+      for (int i = 0; i < normalizedTags.size(); i++) {
+        stmt.setString(i + 2, normalizedTags.get(i));
+      }
+      stmt.setInt(normalizedTags.size() + 2, minimumShared);
+      try (ResultSet rs = stmt.executeQuery()) {
+        return rs.next() ? rs.getInt("matching_dreams") : 0;
+      }
+    }
+  }
+
   private List<DreamEntry> mapDreamEntries(ResultSet rs) throws SQLException {
     List<DreamEntry> dreams = new ArrayList<>();
     while (rs.next()) {
@@ -317,12 +404,20 @@ ORDER BY t.normalized_name ASC, l.source ASC
             rs.getString("dream_date"),
             rs.getLong("timestamp"),
             List.of(),
-            parseDreamType(rs.getString("dream_type")),
+            resolveLegacyClassification(
+                rs.getString("effective_classification"), rs.getString("dream_type")),
             rs.getString("analysis_result"),
             getNullableLong(rs, "analyzed_at"),
             rs.getString("analysis_version"),
             parseAnalysisStatus(rs.getString("analysis_status"), rs.getInt("analyzed") == 1));
     entry.setId(rs.getInt("id"));
+    entry.setUserClassification(parseNullableClassification(rs.getString("user_classification")));
+    entry.setInferredClassification(
+        parseNullableClassification(rs.getString("inferred_classification")));
+    entry.setEffectiveClassification(parseClassification(rs.getString("effective_classification")));
+    entry.setClassificationSource(parseClassificationSource(rs.getString("classification_source")));
+    entry.setClassificationReason(rs.getString("classification_reason"));
+    entry.setClassificationUpdatedAt(getNullableLong(rs, "classification_updated_at"));
     entry.setSymbolTags(listTagsForDream(entry.getId()));
     return entry;
   }
@@ -338,8 +433,46 @@ ORDER BY t.normalized_name ASC, l.source ASC
         rs.getLong("created_at"));
   }
 
-  private DreamType parseDreamType(String value) {
-    return value != null && !value.isBlank() ? DreamType.valueOf(value) : DreamType.NONE;
+  private DreamClassification parseClassification(String value) {
+    if (value == null || value.isBlank()) {
+      return DreamClassification.UNKNOWN;
+    }
+    try {
+      return DreamClassification.valueOf(value);
+    } catch (IllegalArgumentException e) {
+      return DreamClassification.UNKNOWN;
+    }
+  }
+
+  private DreamClassification resolveLegacyClassification(
+      String effectiveClassification, String legacyClassificationValue) {
+    DreamClassification parsed = parseClassification(effectiveClassification);
+    if (parsed != DreamClassification.UNKNOWN) {
+      return parsed;
+    }
+    return parseClassification(legacyClassificationValue);
+  }
+
+  private DreamClassification parseNullableClassification(String value) {
+    if (value == null || value.isBlank()) {
+      return null;
+    }
+    try {
+      return DreamClassification.valueOf(value);
+    } catch (IllegalArgumentException e) {
+      return null;
+    }
+  }
+
+  private ClassificationSource parseClassificationSource(String value) {
+    if (value == null || value.isBlank()) {
+      return ClassificationSource.UNKNOWN;
+    }
+    try {
+      return ClassificationSource.valueOf(value);
+    } catch (IllegalArgumentException e) {
+      return ClassificationSource.UNKNOWN;
+    }
   }
 
   private AnalysisStatus parseAnalysisStatus(String value, boolean legacyAnalyzed) {
@@ -358,6 +491,15 @@ ORDER BY t.normalized_name ASC, l.source ASC
       stmt.setNull(index, Types.INTEGER);
     } else {
       stmt.setLong(index, value);
+    }
+  }
+
+  private void setNullableClassification(
+      PreparedStatement stmt, int index, DreamClassification value) throws SQLException {
+    if (value == null) {
+      stmt.setNull(index, Types.VARCHAR);
+    } else {
+      stmt.setString(index, value.name());
     }
   }
 

@@ -1,8 +1,9 @@
 package com.dreamgrid.dto;
 
 import com.dreamgrid.model.AnalysisStatus;
+import com.dreamgrid.model.ClassificationSource;
+import com.dreamgrid.model.DreamClassification;
 import com.dreamgrid.model.DreamTag;
-import com.dreamgrid.model.DreamType;
 import java.util.List;
 
 public class DreamResponse {
@@ -12,12 +13,17 @@ public class DreamResponse {
   private String dreamDate;
   private long timestamp;
   private List<DreamTag> symbolTags;
-  private DreamType dreamType;
   private boolean analyzed;
   private String analysisResult;
   private Long analyzedAt;
   private String analysisVersion;
   private AnalysisStatus analysisStatus;
+  private DreamClassification userClassification;
+  private DreamClassification inferredClassification;
+  private DreamClassification effectiveClassification;
+  private ClassificationSource classificationSource;
+  private String classificationReason;
+  private Long classificationUpdatedAt;
 
   public DreamResponse() {}
 
@@ -28,24 +34,34 @@ public class DreamResponse {
       String dreamDate,
       long timestamp,
       List<DreamTag> symbolTags,
-      DreamType dreamType,
       boolean analyzed,
       String analysisResult,
       Long analyzedAt,
       String analysisVersion,
-      AnalysisStatus analysisStatus) {
+      AnalysisStatus analysisStatus,
+      DreamClassification userClassification,
+      DreamClassification inferredClassification,
+      DreamClassification effectiveClassification,
+      ClassificationSource classificationSource,
+      String classificationReason,
+      Long classificationUpdatedAt) {
     this.id = id;
     this.title = title;
     this.content = content;
     this.dreamDate = dreamDate;
     this.timestamp = timestamp;
     this.symbolTags = symbolTags;
-    this.dreamType = dreamType;
     this.analyzed = analyzed;
     this.analysisResult = analysisResult;
     this.analyzedAt = analyzedAt;
     this.analysisVersion = analysisVersion;
     this.analysisStatus = analysisStatus;
+    this.userClassification = userClassification;
+    this.inferredClassification = inferredClassification;
+    this.effectiveClassification = effectiveClassification;
+    this.classificationSource = classificationSource;
+    this.classificationReason = classificationReason;
+    this.classificationUpdatedAt = classificationUpdatedAt;
   }
 
   public int getId() {
@@ -96,14 +112,6 @@ public class DreamResponse {
     this.symbolTags = symbolTags;
   }
 
-  public DreamType getDreamType() {
-    return dreamType;
-  }
-
-  public void setDreamType(DreamType dreamType) {
-    this.dreamType = dreamType;
-  }
-
   public boolean isAnalyzed() {
     return analyzed;
   }
@@ -142,5 +150,53 @@ public class DreamResponse {
 
   public void setAnalysisStatus(AnalysisStatus analysisStatus) {
     this.analysisStatus = analysisStatus;
+  }
+
+  public DreamClassification getUserClassification() {
+    return userClassification;
+  }
+
+  public void setUserClassification(DreamClassification userClassification) {
+    this.userClassification = userClassification;
+  }
+
+  public DreamClassification getInferredClassification() {
+    return inferredClassification;
+  }
+
+  public void setInferredClassification(DreamClassification inferredClassification) {
+    this.inferredClassification = inferredClassification;
+  }
+
+  public DreamClassification getEffectiveClassification() {
+    return effectiveClassification;
+  }
+
+  public void setEffectiveClassification(DreamClassification effectiveClassification) {
+    this.effectiveClassification = effectiveClassification;
+  }
+
+  public ClassificationSource getClassificationSource() {
+    return classificationSource;
+  }
+
+  public void setClassificationSource(ClassificationSource classificationSource) {
+    this.classificationSource = classificationSource;
+  }
+
+  public String getClassificationReason() {
+    return classificationReason;
+  }
+
+  public void setClassificationReason(String classificationReason) {
+    this.classificationReason = classificationReason;
+  }
+
+  public Long getClassificationUpdatedAt() {
+    return classificationUpdatedAt;
+  }
+
+  public void setClassificationUpdatedAt(Long classificationUpdatedAt) {
+    this.classificationUpdatedAt = classificationUpdatedAt;
   }
 }

@@ -54,7 +54,13 @@ CREATE TABLE IF NOT EXISTS dreams (
     analysis_result TEXT,
     analyzed_at INTEGER,
     analysis_version TEXT,
-    analysis_status TEXT NOT NULL DEFAULT 'PENDING'
+    analysis_status TEXT NOT NULL DEFAULT 'PENDING',
+    user_classification TEXT,
+    inferred_classification TEXT,
+    effective_classification TEXT NOT NULL DEFAULT 'UNKNOWN',
+    classification_source TEXT NOT NULL DEFAULT 'UNKNOWN',
+    classification_reason TEXT,
+    classification_updated_at INTEGER
 );
 """;
 
@@ -91,6 +97,30 @@ CREATE TABLE IF NOT EXISTS dreams (
     addColumnIfMissing(stmt, "analyzed_at", "INTEGER");
     addColumnIfMissing(stmt, "analysis_version", "TEXT");
     addColumnIfMissing(stmt, "analysis_status", "TEXT NOT NULL DEFAULT 'PENDING'");
+    addColumnIfMissing(stmt, "user_classification", "TEXT");
+    addColumnIfMissing(stmt, "inferred_classification", "TEXT");
+    addColumnIfMissing(stmt, "effective_classification", "TEXT NOT NULL DEFAULT 'UNKNOWN'");
+    addColumnIfMissing(stmt, "classification_source", "TEXT NOT NULL DEFAULT 'UNKNOWN'");
+    addColumnIfMissing(stmt, "classification_reason", "TEXT");
+    addColumnIfMissing(stmt, "classification_updated_at", "INTEGER");
+    stmt.executeUpdate(
+        """
+UPDATE dreams
+SET effective_classification = CASE
+    WHEN dream_type IN ('LUCID', 'NIGHTMARE', 'RECURRING', 'NEUTRAL') THEN dream_type
+    ELSE 'UNKNOWN'
+END,
+classification_source = CASE
+    WHEN dream_type IN ('LUCID', 'NIGHTMARE', 'RECURRING', 'NEUTRAL') THEN 'USER'
+    ELSE 'UNKNOWN'
+END,
+user_classification = CASE
+    WHEN dream_type IN ('LUCID', 'NIGHTMARE', 'RECURRING', 'NEUTRAL') THEN dream_type
+    ELSE user_classification
+END,
+classification_updated_at = COALESCE(classification_updated_at, timestamp)
+WHERE effective_classification IS NULL OR effective_classification = 'UNKNOWN'
+""");
   }
 
   private static void createTagTables(Statement stmt) throws SQLException {

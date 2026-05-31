@@ -26,7 +26,7 @@ Content-Type: application/json
   "title": "Mountain Climb",
   "content": "I was climbing a mountain under a clear sky",
   "date": "2026-05-31",
-  "type": "VISION",
+  "classification": "NEUTRAL",
   "tags": ["mountain", "clear sky"]
 }
 ```
@@ -38,7 +38,7 @@ Validation rules:
 - `title` must not be blank and must be at most 160 characters.
 - `content` must not be blank and must be at most 12,000 characters.
 - `date`, when provided, must use `yyyy-MM-dd` or `yyyy-MM-dd HH:mm:ss`.
-- `type`, when provided, must match a known dream type.
+- `classification`, when provided, must be one of `LUCID`, `NIGHTMARE`, `RECURRING`, `NEUTRAL`, or `UNKNOWN`. The older `type` field is still accepted as a request alias for compatibility.
 - `tags`, when provided, are trimmed, lowercased, deduplicated, and stored as manual tags.
 
 ## Read Dreams
@@ -53,10 +53,10 @@ GET /dreams/{id}
 `GET /dreams` also supports filters:
 
 ```http
-GET /dreams?type=VISION&status=COMPLETED&tag=sky
+GET /dreams?classification=NEUTRAL&status=COMPLETED&tag=sky
 ```
 
-Filters can be used individually or together.
+Filters can be used individually or together. The older `type` query parameter is still accepted as a classification alias.
 
 ## Search Dreams
 
@@ -153,6 +153,39 @@ Example response:
 This endpoint requires a completed analysis. If the dream is not analyzed yet, the API returns `400`.
 
 Questions must not be blank and must be at most 1,000 characters.
+
+## Dream Classification
+
+```http
+GET /dreams/{id}/classification
+PUT /dreams/{id}/classification
+DELETE /dreams/{id}/classification/override
+```
+
+`GET /dreams/{id}/classification` returns the stored classification state:
+
+```json
+{
+  "userClassification": null,
+  "inferredClassification": "NIGHTMARE",
+  "effectiveClassification": "NIGHTMARE",
+  "classificationSource": "ANALYSIS",
+  "classificationReason": "Analysis or dream content contains nightmare-related signals.",
+  "classificationUpdatedAt": 1780250100000
+}
+```
+
+`PUT /dreams/{id}/classification` sets a user override:
+
+```json
+{
+  "classification": "LUCID"
+}
+```
+
+User overrides become the effective classification and are preserved during reanalysis. `DELETE /dreams/{id}/classification/override` removes the user override and restores the inferred classification when one exists.
+
+After successful analysis, the backend may infer `LUCID`, `NIGHTMARE`, or `NEUTRAL` from the analysis response and dream content. It may infer `RECURRING` only from historical tag overlap with other saved dreams. This workflow is deterministic backend logic and does not call the Python service beyond the normal analysis request.
 
 ## Python Analysis Service
 

@@ -5,9 +5,9 @@ import com.dreamgrid.client.DreamAnalysisClient;
 import com.dreamgrid.config.AppConfig;
 import com.dreamgrid.dto.TagUsage;
 import com.dreamgrid.model.AnalysisStatus;
+import com.dreamgrid.model.DreamClassification;
 import com.dreamgrid.model.DreamEntry;
 import com.dreamgrid.model.DreamTag;
-import com.dreamgrid.model.DreamType;
 import com.dreamgrid.model.TagSource;
 import com.dreamgrid.repository.DreamRepository;
 import com.google.gson.Gson;
@@ -30,6 +30,7 @@ public class DreamService {
   private final DreamValidator validator;
   private final ContentSafetyService contentSafetyService;
   private final TagNormalizationService tagNormalizationService;
+  private final DreamClassificationService classificationService;
   private final Gson gson = new Gson();
 
   public DreamService(Connection connection) {
@@ -40,6 +41,7 @@ public class DreamService {
     this.validator = new DreamValidator();
     this.contentSafetyService = new ContentSafetyService();
     this.tagNormalizationService = new TagNormalizationService();
+    this.classificationService = new DreamClassificationService(dreamRepository);
   }
 
   public DreamService(DreamRepository dreamRepository, DreamAnalysisClient analysisClient) {
@@ -54,7 +56,8 @@ public class DreamService {
         analysisVersion,
         new DreamValidator(),
         new ContentSafetyService(),
-        new TagNormalizationService());
+        new TagNormalizationService(),
+        null);
   }
 
   public DreamService(
@@ -63,13 +66,18 @@ public class DreamService {
       String analysisVersion,
       DreamValidator validator,
       ContentSafetyService contentSafetyService,
-      TagNormalizationService tagNormalizationService) {
+      TagNormalizationService tagNormalizationService,
+      DreamClassificationService classificationService) {
     this.dreamRepository = dreamRepository;
     this.analysisClient = analysisClient;
     this.expectedAnalysisVersion = analysisVersion == null ? "" : analysisVersion.trim();
     this.validator = validator;
     this.contentSafetyService = contentSafetyService;
     this.tagNormalizationService = tagNormalizationService;
+    this.classificationService =
+        classificationService != null
+            ? classificationService
+            : new DreamClassificationService(dreamRepository);
   }
 
   public void addDream(DreamEntry dream) throws SQLException {
@@ -81,16 +89,17 @@ public class DreamService {
     dream.setSymbolTags(dreamRepository.listTagsForDream(dream.getId()));
   }
 
-  public DreamEntry saveDream(String title, String content, String dreamDate, DreamType dreamType)
+  public DreamEntry saveDream(
+      String title, String content, String dreamDate, DreamClassification classification)
       throws SQLException {
-    return saveDream(title, content, dreamDate, dreamType, null);
+    return saveDream(title, content, dreamDate, classification, null);
   }
 
   public DreamEntry saveDream(
       String title,
       String content,
       String dreamDate,
-      DreamType dreamType,
+      DreamClassification classification,
       List<String> requestedTags)
       throws SQLException {
     validator.validateDream(title, content, dreamDate);
@@ -100,9 +109,9 @@ public class DreamService {
         dreamDate != null && !dreamDate.isBlank()
             ? dreamDate
             : new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date(timestamp));
-    DreamType type = dreamType != null ? dreamType : DreamType.NONE;
     List<DreamTag> tags = tagNormalizationService.normalize(requestedTags, TagSource.MANUAL);
-    DreamEntry entry = new DreamEntry(title, content, formattedDate, timestamp, tags, type);
+    DreamEntry entry = new DreamEntry(title, content, formattedDate, timestamp, tags);
+    classificationService.applyInitialClassification(entry, classification);
     dreamRepository.insert(entry);
     for (DreamTag tag : tags) {
       dreamRepository.linkTagToDream(entry.getId(), tag, TagSource.MANUAL, null);
@@ -140,6 +149,16 @@ public class DreamService {
           analysis, System.currentTimeMillis(), resolveAnalysisVersion(analysis));
       dreamRepository.update(dream);
       dreamRepository.replaceAnalysisTags(dreamId, parseAnalysisTags(analysis));
+      DreamEntry classifiedDream = dreamRepository.findById(dreamId);
+      ClassificationResult result =
+          classificationService.classifyFromAnalysis(classifiedDream, analysis);
+      classificationService.applyInference(classifiedDream, result);
+      ClassificationResult recurring =
+          classificationService.classifyRecurringFromPatterns(classifiedDream);
+      if (recurring != null && classifiedDream.getUserClassification() == null) {
+        classificationService.applyInference(classifiedDream, recurring);
+      }
+      dreamRepository.updateClassificationFields(classifiedDream);
       return analysis;
     } catch (IOException e) {
       dream.failAnalysis();
@@ -167,20 +186,38 @@ public class DreamService {
     return dreamRepository.findByTag(normalizedTag);
   }
 
-  public List<DreamEntry> filterDreams(String type, String status, String tag) throws SQLException {
-    DreamType dreamType = parseDreamType(type);
+  public List<DreamEntry> filterDreams(String classificationValue, String status, String tag)
+      throws SQLException {
+    DreamClassification classification = parseDreamClassification(classificationValue);
     AnalysisStatus analysisStatus = parseAnalysisStatus(status);
     String normalizedTag = tagNormalizationService.normalizeName(tag);
 
-    if (dreamType == null && analysisStatus == null && normalizedTag.isBlank()) {
+    if (classification == null && analysisStatus == null && normalizedTag.isBlank()) {
       return dreamRepository.getAll();
     }
 
-    return dreamRepository.findByFilters(null, dreamType, analysisStatus, normalizedTag);
+    return dreamRepository.findByFilters(null, classification, analysisStatus, normalizedTag);
   }
 
   public DreamEntry getDreamById(int id) throws SQLException {
     return dreamRepository.findById(id);
+  }
+
+  public DreamEntry getDreamClassification(int dreamId) throws SQLException {
+    DreamEntry dream = dreamRepository.findById(dreamId);
+    if (dream == null) {
+      throw new DreamGridException(ApiErrorCode.NOT_FOUND, "Dream not found");
+    }
+    return dream;
+  }
+
+  public DreamEntry updateDreamClassification(int dreamId, String classification)
+      throws SQLException {
+    return classificationService.applyUserClassificationOverride(dreamId, classification);
+  }
+
+  public DreamEntry clearDreamClassificationOverride(int dreamId) throws SQLException {
+    return classificationService.clearUserClassificationOverride(dreamId);
   }
 
   public List<TagUsage> getTagUsageCounts() throws SQLException {
@@ -295,15 +332,16 @@ public class DreamService {
     }
   }
 
-  private DreamType parseDreamType(String value) {
+  private DreamClassification parseDreamClassification(String value) {
     if (value == null || value.isBlank()) {
       return null;
     }
 
     try {
-      return DreamType.valueOf(value.trim().toUpperCase(Locale.ROOT));
+      return DreamClassification.valueOf(value.trim().toUpperCase(Locale.ROOT));
     } catch (IllegalArgumentException e) {
-      throw new DreamGridException(ApiErrorCode.VALIDATION_ERROR, "Invalid dream type: " + value);
+      throw new DreamGridException(
+          ApiErrorCode.VALIDATION_ERROR, "Invalid classification: " + value);
     }
   }
 

@@ -7,6 +7,7 @@ public class DreamRequest {
   private String content;
   private String date;
   private String type;
+  private String classification;
   private List<String> tags;
 
   public DreamRequest() {}
@@ -53,6 +54,14 @@ public class DreamRequest {
 
   public void setType(String type) {
     this.type = type;
+  }
+
+  public String getClassification() {
+    return classification;
+  }
+
+  public void setClassification(String classification) {
+    this.classification = classification;
   }
 
   public List<String> getTags() {
