@@ -1,18 +1,16 @@
 # DreamGrid
 
-DreamGrid is a local backend for storing dream entries and running AI-assisted analysis on them. The Java service owns the API, persistence, and workflow rules. A small Python service handles the text analysis model.
+DreamGrid is a local backend for storing dreams and running AI-assisted analysis on them. The Java service handles the REST API, SQLite persistence, and workflow rules. The Python service handles model prompts and returns structured analysis data.
 
-The project is intentionally split into plain layers so the core behavior is easy to follow: API handlers call a service, the service coordinates repositories and clients, repositories persist to SQLite, and the Python model stays behind an HTTP boundary.
+## Current Features
 
-## What It Does
-
-- Stores dream entries in SQLite
-- Uses the Python model to return detected symbols and themes as part of the analysis
-- Sends dream content to a local Python analysis service
-- Persists analysis results with status, timestamp, and version metadata
-- Reuses cached analysis when the stored result is still valid
-- Supports forced reanalysis without deleting the previous successful result on failure
-- Exposes the workflow through a Java REST API
+- Create and read dream entries
+- Persist dreams in SQLite
+- Analyze dreams through a local Python service
+- Store analysis result, status, timestamp, and version
+- Reuse cached analysis when it is still valid
+- Force a new analysis when needed
+- Ask follow-up questions about an analyzed dream
 
 ## Architecture
 
@@ -20,51 +18,45 @@ The project is intentionally split into plain layers so the core behavior is eas
 Java API (:8080)
     |
     v
-DreamApiHandler
-    |
-    v
 DreamService
-    |------------------------.
-    v                        v
-DreamRepository       DreamAnalysisClient
-    |                        |
-    v                        v
-SQLite             Python analysis API (:5005)
+    |----------------------.
+    v                      v
+DreamRepository     DreamAnalysisClient
+    |                      |
+    v                      v
+SQLite          Python analysis service (:5005)
 ```
 
-The main Java packages are:
+Main Java packages:
 
-- `api` - HTTP routing and JSON responses
-- `service` - application workflow and business rules
-- `repository` - JDBC persistence
-- `database` - SQLite connection and schema setup
-- `client` - HTTP calls to the Python analysis service
+- `api` - HTTP handlers
+- `service` - application workflow
+- `repository` - SQLite reads and writes
+- `database` - connection and schema setup
+- `client` - HTTP calls to the Python service
 - `model` - domain objects and enums
 - `dto` - request and response payloads
 
-The Python service is under `python/`:
+Python files live under `python/`:
 
-- `analysis_api.py` - Flask routes and request validation
-- `analysis_service.py` - model prompts, structured analysis parsing, and question answering
-- `models/analysis_result.py` - typed analysis response model
-- `config.py` - service and model configuration
+- `analysis_api.py` - Flask routes
+- `analysis_service.py` - model prompts, response parsing, and question answering
+- `models/analysis_result.py` - structured analysis result
+- `config.py` - model and service settings
 
 ## Repository Layout
 
 ```text
-src/main/java/
-  Main.java
-  com/dreamgrid/
-    api/
-    client/
-    database/
-    dto/
-    model/
-    repository/
-    service/
+src/main/java/com/dreamgrid/
+  api/
+  client/
+  database/
+  dto/
+  model/
+  repository/
+  service/
 
-src/test/java/
-  com/dreamgrid/service/
+src/test/java/com/dreamgrid/service/
 
 python/
   analysis_api.py
@@ -72,16 +64,13 @@ python/
   config.py
   models/
   tests/
-
-requirements.txt
-build.gradle
 ```
 
 ## Database
 
-Dreams are stored in `data/dreams.db`. The Java application creates the database directory and the `dreams` table at startup. Schema updates are additive so existing records are not dropped.
+DreamGrid stores data in `data/dreams.db`. The database is created automatically when the Java app starts.
 
-Current table:
+The main table is `dreams`:
 
 ```sql
 CREATE TABLE IF NOT EXISTS dreams (
@@ -100,124 +89,15 @@ CREATE TABLE IF NOT EXISTS dreams (
 );
 ```
 
-`analysis_status` is the canonical analysis state. `analyzed` remains as a compatibility flag derived from completed analysis state.
-
-## API
-
-The Java API runs on `http://localhost:8080`.
-
-### Health
-
-```http
-GET /health
-```
-
-```json
-{
-  "status": "ok"
-}
-```
-
-### Create a Dream
-
-```http
-POST /dreams
-Content-Type: application/json
-```
-
-```json
-{
-  "title": "Mountain Climb",
-  "content": "I was climbing a mountain under a clear sky with fire on the horizon",
-  "date": "2026-05-31",
-  "type": "VISION"
-}
-```
-
-New dreams start with `analysisStatus` set to `PENDING`.
-
-### Read Dreams
-
-```http
-GET /dreams
-GET /dreams/{id}
-```
-
-### Analyze a Dream
-
-```http
-POST /dreams/{id}/analyze
-```
-
-If the dream already has a completed analysis for the current analysis version, the stored result is returned. Otherwise the Java service calls the Python analysis API and stores the result.
-
-### Force Reanalysis
-
-```http
-POST /dreams/{id}/reanalyze
-```
-
-This always calls the Python analysis service. On success, the previous analysis is replaced. On failure, the old successful result is kept and the status is set to `FAILED`.
-
-### Ask a Question About a Dream
-
-```http
-POST /dreams/{id}/questions
-Content-Type: application/json
-```
-
-```json
-{
-  "question": "What does the portal represent in this dream?"
-}
-```
-
-This endpoint requires the dream to have a completed analysis. The Java service sends the dream text, stored analysis, and question to the Python service.
-
-## Python Analysis Service
-
-The Python service exposes:
-
-```http
-GET /health
-POST /analyze
-POST /ask
-```
-
-`POST /analyze` accepts:
-
-```json
-{
-  "dream": "I walked through a portal under a bright sky."
-}
-```
-
-It returns structured analysis data:
-
-```json
-{
-  "summary": "A concise interpretation of the dream.",
-  "detectedSymbols": ["PORTAL", "SKY"],
-  "detectedThemes": ["freedom", "transition"],
-  "confidenceScore": 0.85,
-  "modelVersion": "v1"
-}
-```
-
-The Java service stores the Python response as the dream analysis result.
-
-`confidenceScore` is a bounded value between `0.0` and `1.0`. It is not a mathematical certainty. It represents how confident the analysis model says it is that the summary, symbols, and themes are grounded in the provided dream text. If the model omits the score, the service falls back to a conservative score based on whether the structured fields are present.
-
-Symbols and themes are produced by the model in the `/analyze` response. They are not generated from a hardcoded keyword list. The Java service mirrors model-detected symbols into the existing `symbolTags` field only when they match a known `DreamSymbol` enum value.
+`analysis_status` is the main state field. `analyzed` is kept as a compatibility flag.
 
 ## Running Locally
 
 Requirements:
 
 - Java 17+
-- Gradle, or a complete Gradle wrapper checkout
+- Gradle wrapper included in the repository
 - Python 3
-- Python dependencies from `requirements.txt`
 
 Install Python dependencies:
 
@@ -227,64 +107,73 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-On macOS/Linux, activate the environment with:
+On macOS/Linux:
 
 ```bash
 source .venv/bin/activate
 ```
 
-Start the Python service first:
+Start the Python service:
 
 ```bash
 python python/analysis_api.py
 ```
 
-Then start the Java API:
-
-```bash
-gradle run
-```
-
-If the Gradle wrapper JAR is present in your checkout:
-
-```bash
-./gradlew run
-```
-
-On Windows:
+Start the Java API:
 
 ```bash
 gradlew.bat run
 ```
 
-## Testing
-
-Java tests:
+On macOS/Linux:
 
 ```bash
-gradle test
+./gradlew run
 ```
 
-Python tests:
+## API
+
+The Java API runs on `http://localhost:8080`.
+
+Common endpoints:
+
+```http
+GET  /health
+GET  /dreams
+GET  /dreams/{id}
+POST /dreams
+POST /dreams/{id}/analyze
+POST /dreams/{id}/reanalyze
+POST /dreams/{id}/questions
+```
+
+See [API.md](API.md) for request and response examples.
+
+## Testing
+
+Java:
+
+```bash
+gradlew.bat test
+gradlew.bat build
+```
+
+Python:
 
 ```bash
 python -m unittest discover -s python/tests
 ```
 
-The current Java tests cover analysis caching, forced reanalysis, failed reanalysis preservation, stale analysis versions, and missing dream handling. The Python tests cover the analysis service model output and Flask API behavior when Flask is installed.
-
 ## Notes
 
-- The Java API expects the Python analysis service on `http://127.0.0.1:5005/analyze`.
-- The default Python model is configured in `python/config.py`.
-- SQLite data is local and stored under `data/`.
+- The Java service expects the Python analysis API at `http://127.0.0.1:5005`.
+- The Python model and version are configured in `python/config.py`.
+- Analysis symbols and themes come from the model response. The Java backend only mirrors known symbols into its existing enum field.
 
 ## Roadmap
 
 - Search over stored dreams
-- Dream similarity scoring
-- Symbol extraction history
-- Multiple stored analysis versions per dream
-- Authentication
-- Docker support
-- More integration-level API tests
+- Analysis history
+- Similarity scoring
+- Symbol statistics
+- More integration tests

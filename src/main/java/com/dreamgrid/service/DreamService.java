@@ -61,12 +61,7 @@ public class DreamService {
     DreamType type = dreamType != null ? dreamType : DreamType.NONE;
     DreamEntry entry =
         new DreamEntry(
-            title,
-            content,
-            formattedDate,
-            timestamp,
-            List.of(DreamSymbol.UNKNOWN),
-            type);
+            title, content, formattedDate, timestamp, List.of(DreamSymbol.UNKNOWN), type);
     dreamRepository.insert(entry);
     return entry;
   }
@@ -112,7 +107,8 @@ public class DreamService {
     return dreamRepository.findById(id);
   }
 
-  public String askQuestionAboutDream(int dreamId, String question) throws IOException, SQLException {
+  public String askQuestionAboutDream(int dreamId, String question)
+      throws IOException, SQLException {
     DreamEntry dream = dreamRepository.findById(dreamId);
 
     if (dream == null) {
@@ -131,8 +127,7 @@ public class DreamService {
   }
 
   private boolean hasValidCachedAnalysis(DreamEntry dream) {
-    return hasCompletedAnalysis(dream)
-        && analysisVersion.equals(dream.getAnalysisVersion());
+    return hasCompletedAnalysis(dream) && analysisVersion.equals(dream.getAnalysisVersion());
   }
 
   private boolean hasCompletedAnalysis(DreamEntry dream) {

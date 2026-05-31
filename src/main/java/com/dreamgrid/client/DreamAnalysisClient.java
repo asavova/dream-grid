@@ -40,8 +40,7 @@ public class DreamAnalysisClient {
     }
 
     int statusCode = con.getResponseCode();
-    InputStream responseStream =
-        statusCode >= 400 ? con.getErrorStream() : con.getInputStream();
+    InputStream responseStream = statusCode >= 400 ? con.getErrorStream() : con.getInputStream();
     StringBuilder response = new StringBuilder();
     if (responseStream != null) {
       try (BufferedReader br =

@@ -8,8 +8,6 @@
 
 # === Gradle ===
 .gradle/
-!gradle/wrapper/gradle-wrapper.jar
-!gradle/wrapper/gradle-wrapper.properties
 /local.properties
 
 # === Logs and data ===
@@ -31,6 +29,8 @@ __pycache__/
 # === JARs and libraries ===
 *.jar
 libs/
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
 
 # === OS specific ===
 .DS_Store
