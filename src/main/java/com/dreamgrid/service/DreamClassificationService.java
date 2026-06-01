@@ -6,15 +6,29 @@ import com.dreamgrid.model.DreamClassification;
 import com.dreamgrid.model.DreamEntry;
 import com.dreamgrid.model.DreamTag;
 import com.dreamgrid.repository.DreamRepository;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import java.nio.file.Path;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
 public class DreamClassificationService {
+  private static final Path DEFAULT_RULE_PATH =
+      Path.of("python", "rules", "classification_rules.json");
+
   private final DreamRepository dreamRepository;
+  private final List<TypeRule> rules;
 
   public DreamClassificationService(DreamRepository dreamRepository) {
+    this(dreamRepository, DEFAULT_RULE_PATH);
+  }
+
+  DreamClassificationService(DreamRepository dreamRepository, Path rulePath) {
     this.dreamRepository = dreamRepository;
+    this.rules = parseRules(new RuleFileLoader().load(rulePath, "classifications"));
   }
 
   public ClassificationResult inferFromDreamText(String title, String content) {
@@ -23,44 +37,25 @@ public class DreamClassificationService {
             .toLowerCase(Locale.ROOT);
     long now = System.currentTimeMillis();
 
-    if (containsAny(
-        evidence,
-        "aware i was dreaming",
-        "controlled the dream",
-        "realized i was dreaming",
-        "realised i was dreaming")) {
-      return new ClassificationResult(
-          DreamClassification.LUCID,
-          ClassificationSource.INFERRED,
-          "Content indicates lucid dream awareness or control.",
-          0.95,
-          now);
+    TypeRule fallback = null;
+    for (TypeRule rule : rules) {
+      if (rule.classification() == DreamClassification.NEUTRAL) {
+        fallback = rule;
+      }
+      if (!rule.keywords().isEmpty() && containsAny(evidence, rule.keywords())) {
+        return toResult(rule, now);
+      }
     }
 
-    if (containsAny(
-        evidence, "fear", "threat", "panic", "chased", "trapped", "nightmare", "terror")) {
-      return new ClassificationResult(
-          DreamClassification.NIGHTMARE,
-          ClassificationSource.INFERRED,
-          "Content indicates fear, threat, or panic signals.",
-          0.9,
-          now);
-    }
-
-    if (containsAny(evidence, "recurring", "repeated", "again", "same dream")) {
-      return new ClassificationResult(
-          DreamClassification.RECURRING,
-          ClassificationSource.INFERRED,
-          "Title or content indicates recurring-dream wording.",
-          0.85,
-          now);
+    if (fallback != null) {
+      return toResult(fallback, now);
     }
 
     return new ClassificationResult(
-        DreamClassification.NEUTRAL,
-        ClassificationSource.INFERRED,
-        "No strong lucid, nightmare, or recurring signals were found.",
-        0.55,
+        DreamClassification.UNKNOWN,
+        ClassificationSource.UNKNOWN,
+        "No configured classification rule matched.",
+        null,
         now);
   }
 
@@ -170,6 +165,26 @@ public class DreamClassificationService {
     return dreamRepository.findById(dreamId);
   }
 
+  private List<TypeRule> parseRules(JsonObject root) {
+    List<TypeRule> parsed = new ArrayList<>();
+    for (JsonElement element : root.getAsJsonArray("classifications")) {
+      JsonObject rule = element.getAsJsonObject();
+      parsed.add(
+          new TypeRule(
+              DreamClassification.valueOf(rule.get("type").getAsString()),
+              ClassificationSource.valueOf(rule.get("source").getAsString()),
+              toStringList(rule.getAsJsonArray("keywords")),
+              rule.get("reason").getAsString(),
+              rule.get("confidence").getAsDouble()));
+    }
+    return parsed;
+  }
+
+  private ClassificationResult toResult(TypeRule rule, long updatedAt) {
+    return new ClassificationResult(
+        rule.classification(), rule.source(), rule.reason(), rule.confidence(), updatedAt);
+  }
+
   private DreamClassification parseUserClassification(String classification) {
     if (classification == null || classification.isBlank()) {
       throw new DreamGridException(ApiErrorCode.VALIDATION_ERROR, "Type is required");
@@ -183,7 +198,7 @@ public class DreamClassificationService {
     }
   }
 
-  private boolean containsAny(String value, String... terms) {
+  private boolean containsAny(String value, List<String> terms) {
     for (String term : terms) {
       if (value.contains(term)) {
         return true;
@@ -191,4 +206,19 @@ public class DreamClassificationService {
     }
     return false;
   }
+
+  private List<String> toStringList(JsonArray values) {
+    List<String> parsed = new ArrayList<>();
+    for (JsonElement value : values) {
+      parsed.add(value.getAsString().toLowerCase(Locale.ROOT));
+    }
+    return parsed;
+  }
+
+  private record TypeRule(
+      DreamClassification classification,
+      ClassificationSource source,
+      List<String> keywords,
+      String reason,
+      Double confidence) {}
 }

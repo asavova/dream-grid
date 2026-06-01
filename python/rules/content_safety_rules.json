@@ -1,0 +1,34 @@
+{
+  "categories": [
+    {
+      "id": "sexual_content",
+      "displayName": "sexual content",
+      "keywords": ["explicit sexual", "graphic rape", "sexual assault instructions"],
+      "message": "{field} is not supported because it matches the sexual content safety policy."
+    },
+    {
+      "id": "graphic_violence",
+      "displayName": "graphic violence",
+      "keywords": ["graphic torture", "graphic mutilation", "violent threat"],
+      "message": "{field} is not supported because it matches the graphic violence safety policy."
+    },
+    {
+      "id": "self_harm",
+      "displayName": "self-harm",
+      "keywords": ["how to self harm", "how to kill myself", "suicide instructions"],
+      "message": "{field} is not supported because it matches the self-harm safety policy."
+    },
+    {
+      "id": "illegal_instructions",
+      "displayName": "illegal instructions",
+      "keywords": ["make a bomb", "build a bomb", "illegal drug recipe"],
+      "message": "{field} is not supported because it matches the illegal instructions safety policy."
+    },
+    {
+      "id": "hate_or_harassment",
+      "displayName": "hate or harassment",
+      "keywords": ["racial slur", "hate speech", "targeted harassment"],
+      "message": "{field} is not supported because it matches the hate or harassment safety policy."
+    }
+  ]
+}

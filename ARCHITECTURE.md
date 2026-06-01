@@ -48,10 +48,12 @@ The Python service is intentionally small:
 - `backends/transformers_backend.py` contains the optional Hugging Face implementation.
 - `models/analysis_result.py` defines the analysis result shape.
 - `config.py` keeps model and server settings in one place.
+- `rule_loader.py` loads and validates JSON rule files.
+- `rules/` stores deterministic interpretation, content-safety, and classification rules.
 
-The analysis backend returns a summary, detected symbols, detected themes, a confidence score, and a model version. The default backend is rule-based so local builds do not require PyTorch or Transformers. The Java backend stores the returned `modelVersion` as the analysis version. If an expected version is configured, the service uses it only to decide whether a cached analysis is stale.
+The analysis backend returns a summary, detected symbols, detected themes, a confidence score, and a model version. The default backend is rule-based so local builds do not require PyTorch or Transformers. It reads symbol aliases, themes, interpretations, and summary text from `python/rules/dream_interpretation_rules.json`. The Java backend stores the returned `modelVersion` as the analysis version. If an expected version is configured, the service uses it only to decide whether a cached analysis is stale.
 
-Input validation and deterministic content safety checks run before persistence or analysis calls. Safety checks are organized by policy category so they can later be replaced or supplemented by provider moderation without moving that responsibility into API handlers or persistence code.
+Input validation and deterministic content safety checks run before persistence or analysis calls. Safety checks are loaded from `python/rules/content_safety_rules.json`, keeping policy data out of Java source while keeping enforcement in the service layer.
 
 ## Tag and Search Flow
 
@@ -83,13 +85,15 @@ Classification has a source:
 - `INFERRED` for deterministic inference from dream text and recurring tag patterns
 - `UNKNOWN` when nothing has classified the dream yet
 
-`DreamClassificationService` applies the precedence rule:
+`DreamClassificationService` loads text classification rules from `python/rules/classification_rules.json` and applies the precedence rule:
 
 1. user classification
 2. inferred type from deterministic rules and recurring tag overlap
 3. unknown
 
 User overrides do not delete inferred classification. Reanalysis can update inferred classification, but the effective classification remains the user override until the override is cleared.
+
+`RECURRING` is intentionally not inferred from text keywords alone. Historical tag overlap can promote a dream to recurring during analysis workflows.
 
 ## Analysis Flow
 

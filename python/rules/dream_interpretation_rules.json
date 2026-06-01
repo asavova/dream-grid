@@ -1,0 +1,69 @@
+{
+  "symbols": [
+    {
+      "tag": "fire",
+      "aliases": ["fire", "flame", "burn", "smoke"],
+      "themes": ["change"],
+      "interpretation": "Fire is often associated with pressure, change, or transformation."
+    },
+    {
+      "tag": "water",
+      "aliases": ["water", "ocean", "sea", "river", "rain", "flood"],
+      "themes": ["emotion", "change", "reflection"],
+      "interpretation": "Water is often associated with emotional movement or uncertainty."
+    },
+    {
+      "tag": "sky",
+      "aliases": ["sky", "cloud", "stars", "moon", "sun"],
+      "themes": ["freedom", "perspective"],
+      "interpretation": "Sky imagery can point to openness, distance, or perspective."
+    },
+    {
+      "tag": "door",
+      "aliases": ["door", "gate", "portal", "entrance"],
+      "themes": ["transition"],
+      "interpretation": "Doorways often suggest transition, choice, or movement between states."
+    },
+    {
+      "tag": "road",
+      "aliases": ["road", "path", "bridge", "street"],
+      "themes": ["transition"],
+      "interpretation": "Roads and paths often suggest direction, progress, or uncertainty."
+    },
+    {
+      "tag": "house",
+      "aliases": ["house", "home", "room", "building"],
+      "themes": ["reflection"],
+      "interpretation": "Homes and rooms often suggest memory, identity, or private experience."
+    },
+    {
+      "tag": "forest",
+      "aliases": ["forest", "tree", "woods"],
+      "themes": ["uncertainty", "growth"],
+      "interpretation": "Forest imagery often suggests complexity, growth, or uncertainty."
+    },
+    {
+      "tag": "shadow",
+      "aliases": ["shadow", "dark", "night"],
+      "themes": ["uncertainty"],
+      "interpretation": "Shadow imagery can point to uncertainty, avoidance, or hidden concerns."
+    }
+  ],
+  "themeMappings": [
+    {
+      "theme": "pressure",
+      "aliases": ["chase", "running", "late", "trapped", "falling"]
+    },
+    {
+      "theme": "uncertainty",
+      "aliases": ["lost", "dark", "fog", "maze", "unknown"]
+    },
+    {
+      "theme": "reflection",
+      "aliases": ["mirror", "childhood"]
+    }
+  ],
+  "defaultThemes": ["reflection"],
+  "defaultSummary": "This dream contains personal symbolic imagery that may benefit from reflection.",
+  "summaryTemplate": "The dream contains symbolic material around {symbols}, with themes of {themes}."
+}

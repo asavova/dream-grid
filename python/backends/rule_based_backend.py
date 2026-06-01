@@ -1,45 +1,25 @@
 import re
-from typing import List
+from typing import Dict, List
 
 import config
 from models.analysis_result import AnalysisResult
+from rule_loader import load_interpretation_rules
 
 
 class RuleBasedAnalysisBackend:
     name = "rule-based"
 
-    SYMBOL_TERMS = {
-        "fire": ["fire", "flame", "burn", "smoke"],
-        "water": ["water", "ocean", "sea", "river", "rain"],
-        "sky": ["sky", "cloud", "stars", "moon", "sun"],
-        "door": ["door", "gate", "portal", "entrance"],
-        "road": ["road", "path", "bridge", "street"],
-        "house": ["house", "home", "room", "building"],
-        "forest": ["forest", "tree", "woods"],
-        "shadow": ["shadow", "dark", "night"],
-    }
-
-    THEME_TERMS = {
-        "change": ["fire", "storm", "move", "moving", "transform"],
-        "transition": ["door", "gate", "portal", "road", "path", "bridge"],
-        "uncertainty": ["lost", "dark", "fog", "maze", "unknown"],
-        "freedom": ["fly", "flying", "sky", "open", "wide"],
-        "pressure": ["chase", "running", "late", "trapped", "falling"],
-        "reflection": ["mirror", "water", "home", "childhood"],
-    }
-
-    def __init__(self, model_version: str = None):
+    def __init__(self, model_version: str = None, rules: Dict = None):
         self.model_version = model_version or config.MODEL_VERSION
+        self.rules = rules or load_interpretation_rules(config.DREAM_INTERPRETATION_RULES_PATH)
 
     def analyze(self, dream_text: str) -> AnalysisResult:
         text = self._normalize(dream_text)
-        symbols = self._match_terms(text, self.SYMBOL_TERMS)
-        themes = self._match_terms(text, self.THEME_TERMS)
+        symbols = self._detect_symbols(text)
+        themes = self._detect_themes(text, symbols)
 
-        if not symbols:
-            symbols = ["unknown"]
         if not themes:
-            themes = ["reflection"]
+            themes = list(self.rules.get("defaultThemes", ["reflection"]))
 
         return AnalysisResult(
             summary=self._build_summary(symbols, themes),
@@ -52,9 +32,8 @@ class RuleBasedAnalysisBackend:
     def answer_question(self, dream_text: str, analysis_result: str, question: str) -> str:
         text = self._normalize(dream_text + " " + analysis_result)
         question_text = self._normalize(question)
-
-        symbols = self._match_terms(text, self.SYMBOL_TERMS)
-        themes = self._match_terms(text, self.THEME_TERMS)
+        symbols = self._detect_symbols(text)
+        themes = self._detect_themes(text, symbols)
 
         if "symbol" in question_text and symbols:
             return "The strongest detected symbols are: " + ", ".join(symbols) + "."
@@ -66,27 +45,49 @@ class RuleBasedAnalysisBackend:
 
         return "The stored analysis does not contain enough detail to answer that confidently."
 
-    def _match_terms(self, text: str, vocabulary: dict) -> List[str]:
+    def _detect_symbols(self, text: str) -> List[str]:
         matches = []
-        for label, terms in vocabulary.items():
-            if any(self._contains_term(text, term) for term in terms):
-                matches.append(label)
+        for rule in self.rules.get("symbols", []):
+            aliases = rule.get("aliases", [])
+            if any(self._contains_term(text, alias) for alias in aliases):
+                matches.append(rule["tag"])
         return matches
 
+    def _detect_themes(self, text: str, symbols: List[str]) -> List[str]:
+        themes = []
+        symbol_rules = {
+            rule["tag"]: rule for rule in self.rules.get("symbols", []) if "tag" in rule
+        }
+        for symbol in symbols:
+            for theme in symbol_rules.get(symbol, {}).get("themes", []):
+                if theme not in themes:
+                    themes.append(theme)
+
+        for mapping in self.rules.get("themeMappings", []):
+            aliases = mapping.get("aliases", [])
+            theme = mapping.get("theme")
+            if theme and theme not in themes and any(self._contains_term(text, alias) for alias in aliases):
+                themes.append(theme)
+        return themes
+
     def _contains_term(self, text: str, term: str) -> bool:
-        return re.search(rf"\b{re.escape(term)}\b", text) is not None
+        return re.search(rf"\b{re.escape(term.lower())}\b", text) is not None
 
     def _normalize(self, value: str) -> str:
         return re.sub(r"\s+", " ", (value or "").lower()).strip()
 
     def _build_summary(self, symbols: List[str], themes: List[str]) -> str:
-        symbol_text = ", ".join(symbols)
-        theme_text = ", ".join(themes)
-        return f"The dream contains symbolic material around {symbol_text}, with themes of {theme_text}."
+        if not symbols:
+            return self.rules["defaultSummary"]
+        template = self.rules.get(
+            "summaryTemplate",
+            "The dream contains symbolic material around {symbols}, with themes of {themes}.",
+        )
+        return template.format(symbols=", ".join(symbols), themes=", ".join(themes))
 
     def _confidence(self, symbols: List[str], themes: List[str]) -> float:
         score = 0.45
-        if symbols and symbols != ["unknown"]:
+        if symbols:
             score += 0.2
         if themes:
             score += 0.15

@@ -1,15 +1,29 @@
 package com.dreamgrid.service;
 
 import com.dreamgrid.api.ApiErrorCode;
-import java.util.EnumMap;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Optional;
 
 public class ContentSafetyService {
-  private static final Map<SafetyCategory, List<String>> BLOCKED_TERMS_BY_CATEGORY =
-      createBlockedTerms();
+  private static final Path DEFAULT_RULE_PATH =
+      Path.of("python", "rules", "content_safety_rules.json");
+
+  private final List<SafetyCategory> categories;
+
+  public ContentSafetyService() {
+    this(DEFAULT_RULE_PATH);
+  }
+
+  ContentSafetyService(Path rulePath) {
+    JsonObject root = new RuleFileLoader().load(rulePath, "categories");
+    this.categories = parseCategories(root.getAsJsonArray("categories"));
+  }
 
   public void validateDreamContent(String content) {
     validate(content, "Dream content");
@@ -27,12 +41,8 @@ public class ContentSafetyService {
     findPolicyViolation(value)
         .ifPresent(
             violation -> {
-              throw new DreamGridException(
-                  ApiErrorCode.CONTENT_REJECTED,
-                  fieldName
-                      + " is not supported because it matches the "
-                      + violation.category().getDisplayName()
-                      + " safety policy.");
+              String message = violation.category().message().replace("{field}", fieldName);
+              throw new DreamGridException(ApiErrorCode.CONTENT_REJECTED, message);
             });
   }
 
@@ -42,10 +52,10 @@ public class ContentSafetyService {
       return Optional.empty();
     }
 
-    for (Map.Entry<SafetyCategory, List<String>> entry : BLOCKED_TERMS_BY_CATEGORY.entrySet()) {
-      for (String blockedTerm : entry.getValue()) {
+    for (SafetyCategory category : categories) {
+      for (String blockedTerm : category.keywords()) {
         if (normalized.contains(blockedTerm)) {
-          return Optional.of(new SafetyViolation(entry.getKey(), blockedTerm));
+          return Optional.of(new SafetyViolation(category, blockedTerm));
         }
       }
     }
@@ -53,47 +63,32 @@ public class ContentSafetyService {
     return Optional.empty();
   }
 
+  private List<SafetyCategory> parseCategories(JsonArray values) {
+    List<SafetyCategory> parsed = new ArrayList<>();
+    for (JsonElement element : values) {
+      JsonObject category = element.getAsJsonObject();
+      parsed.add(
+          new SafetyCategory(
+              category.get("id").getAsString(),
+              category.get("message").getAsString(),
+              toStringList(category.getAsJsonArray("keywords"))));
+    }
+    return parsed;
+  }
+
+  private List<String> toStringList(JsonArray values) {
+    List<String> parsed = new ArrayList<>();
+    for (JsonElement value : values) {
+      parsed.add(normalize(value.getAsString()));
+    }
+    return parsed;
+  }
+
   private static String normalize(String value) {
     return value.toLowerCase(Locale.ROOT).replaceAll("\\s+", " ").trim();
   }
 
-  private static Map<SafetyCategory, List<String>> createBlockedTerms() {
-    Map<SafetyCategory, List<String>> terms = new EnumMap<>(SafetyCategory.class);
-    terms.put(
-        SafetyCategory.SEXUAL_CONTENT,
-        List.of("explicit sexual", "graphic rape", "sexual assault instructions"));
-    terms.put(
-        SafetyCategory.GRAPHIC_VIOLENCE,
-        List.of("graphic torture", "graphic mutilation", "violent threat"));
-    terms.put(
-        SafetyCategory.SELF_HARM,
-        List.of("how to self harm", "how to kill myself", "suicide instructions"));
-    terms.put(
-        SafetyCategory.ILLEGAL_INSTRUCTIONS,
-        List.of("make a bomb", "build a bomb", "illegal drug recipe"));
-    terms.put(
-        SafetyCategory.HATE_OR_HARASSMENT,
-        List.of("racial slur", "hate speech", "targeted harassment"));
-    return terms;
-  }
-
-  enum SafetyCategory {
-    SEXUAL_CONTENT("sexual content"),
-    GRAPHIC_VIOLENCE("graphic violence"),
-    SELF_HARM("self-harm"),
-    ILLEGAL_INSTRUCTIONS("illegal instructions"),
-    HATE_OR_HARASSMENT("hate or harassment");
-
-    private final String displayName;
-
-    SafetyCategory(String displayName) {
-      this.displayName = displayName;
-    }
-
-    String getDisplayName() {
-      return displayName;
-    }
-  }
+  record SafetyCategory(String id, String message, List<String> keywords) {}
 
   record SafetyViolation(SafetyCategory category, String matchedTerm) {}
 }

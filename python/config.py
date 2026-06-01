@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 
 HOST = os.getenv("DREAMGRID_ANALYSIS_HOST", "0.0.0.0")
@@ -12,3 +13,17 @@ MAX_OUTPUT_LENGTH = int(os.getenv("DREAMGRID_ANALYSIS_MAX_OUTPUT_LENGTH", "256")
 REQUEST_TIMEOUT_SECONDS = int(os.getenv("DREAMGRID_ANALYSIS_TIMEOUT_SECONDS", "30"))
 DEVELOPMENT_MODE = os.getenv("DREAMGRID_ANALYSIS_DEVELOPMENT_MODE", "false").lower() == "true"
 HUGGINGFACE_TOKEN = os.getenv("HUGGINGFACE_TOKEN")
+BASE_DIR = Path(__file__).resolve().parent
+RULES_DIR = Path(os.getenv("DREAMGRID_RULES_DIR", BASE_DIR / "rules"))
+DREAM_INTERPRETATION_RULES_PATH = Path(
+    os.getenv(
+        "DREAMGRID_INTERPRETATION_RULES_PATH",
+        RULES_DIR / "dream_interpretation_rules.json",
+    )
+)
+CONTENT_SAFETY_RULES_PATH = Path(
+    os.getenv("DREAMGRID_CONTENT_SAFETY_RULES_PATH", RULES_DIR / "content_safety_rules.json")
+)
+CLASSIFICATION_RULES_PATH = Path(
+    os.getenv("DREAMGRID_CLASSIFICATION_RULES_PATH", RULES_DIR / "classification_rules.json")
+)

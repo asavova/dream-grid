@@ -428,6 +428,33 @@ public class DreamServiceTest {
   }
 
   @Test
+  public void duplicateTagsDoNotCreateDuplicateLinks() throws Exception {
+    DreamEntry dream =
+        dreamService.saveDream(
+            "Duplicate Tags",
+            "A dream with duplicate tags.",
+            "2026-05-31",
+            DreamClassification.NEUTRAL,
+            List.of("fire", " FIRE ", "fire"));
+
+    analysisClient.nextResult =
+        "{\"summary\":\"ok\",\"detectedSymbols\":[\"fire\",\"FIRE\"],\"detectedThemes\":[\"fire\"],\"modelVersion\":\"v1\"}";
+    dreamService.reanalyzeDream(dream.getId());
+
+    int manualLinks =
+        countRows(
+            "SELECT COUNT(*) FROM dream_tag_links WHERE dream_id = ? AND source = 'MANUAL'",
+            dream.getId());
+    int analysisLinks =
+        countRows(
+            "SELECT COUNT(*) FROM dream_tag_links WHERE dream_id = ? AND source = 'ANALYSIS'",
+            dream.getId());
+
+    assertEquals(1, manualLinks);
+    assertEquals(1, analysisLinks);
+  }
+
+  @Test
   public void searchByTagReturnsMatchingDreams() throws Exception {
     DreamEntry fireDream =
         dreamService.saveDream(
@@ -497,6 +524,24 @@ public class DreamServiceTest {
     List<DreamEntry> results = dreamService.getDreamsByTag("not-a-symbol");
 
     assertTrue(results.isEmpty());
+  }
+
+  @Test
+  public void blankTagsAreIgnored() throws Exception {
+    DreamEntry dream =
+        dreamService.saveDream(
+            "Blank Tags",
+            "A dream with blank tags.",
+            "2026-05-31",
+            DreamClassification.NEUTRAL,
+            List.of("", "   ", "\t"));
+    analysisClient.nextResult =
+        "{\"summary\":\"ok\",\"detectedSymbols\":[\" \",\"\"],\"detectedThemes\":[\"\\t\"],\"modelVersion\":\"v1\"}";
+
+    dreamService.reanalyzeDream(dream.getId());
+    DreamEntry reloaded = repository.findById(dream.getId());
+
+    assertTrue(reloaded.getSymbolTags().isEmpty());
   }
 
   @Test
@@ -622,12 +667,12 @@ public class DreamServiceTest {
   }
 
   @Test
-  public void recurringInference() throws Exception {
+  public void recurringKeywordAloneDoesNotInferRecurringType() throws Exception {
     DreamEntry dream =
         dreamService.saveDream(
             "Same dream again", "The same dream happened again.", "2026-05-31", null, null);
     DreamEntry reloaded = repository.findById(dream.getId());
-    assertEquals(DreamClassification.RECURRING, reloaded.getEffectiveClassification());
+    assertEquals(DreamClassification.NEUTRAL, reloaded.getEffectiveClassification());
   }
 
   @Test

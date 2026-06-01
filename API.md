@@ -268,6 +268,7 @@ DELETE /dreams/{id}/classification/override
 User overrides become the effective classification and are preserved during reanalysis. `DELETE /dreams/{id}/classification/override` removes the user override and restores the inferred classification when one exists.
 
 Type inference is deterministic backend logic, not AI moderation. It uses explicit phrase and signal matching from dream text plus recurring tag overlap for recurring-type promotion during analysis workflows.
+Text classification rules are loaded from `python/rules/classification_rules.json`. `RECURRING` is not inferred from text-only keywords; recurring promotion depends on historical tag overlap.
 
 ## Python Analysis Service
 
@@ -307,6 +308,8 @@ POST /ask
 
 Symbols and themes from the model response are normalized into dynamic analysis-generated tags. Reanalysis replaces analysis-generated tags for that dream and preserves manual tags.
 
+The default `rule-based` Python backend loads deterministic symbol, alias, theme, interpretation, and summary rules from `python/rules/dream_interpretation_rules.json`. Adding a new symbol means adding a JSON object with `tag`, `aliases`, `themes`, and `interpretation`.
+
 ## Error Format
 
 ```json
@@ -324,4 +327,4 @@ Current error codes:
 - `CONTENT_REJECTED`
 - `INTERNAL_ERROR`
 
-DreamGrid applies a deterministic application-level safety policy before calling the Python analysis service. The policy currently rejects supported categories such as self-harm instructions, illegal instructions, explicit sexual content, graphic violence, and hate or harassment. Rejected content returns `CONTENT_REJECTED` and is not sent to the analysis service.
+DreamGrid applies a deterministic application-level safety policy before calling the Python analysis service. Safety categories, keyword lists, and rejection messages are loaded from `python/rules/content_safety_rules.json`. Rejected content returns `CONTENT_REJECTED` and is not sent to the analysis service.

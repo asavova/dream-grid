@@ -1,0 +1,30 @@
+{
+  "classifications": [
+    {
+      "type": "LUCID",
+      "keywords": [
+        "aware i was dreaming",
+        "controlled the dream",
+        "realized i was dreaming",
+        "realised i was dreaming"
+      ],
+      "source": "INFERRED",
+      "confidence": 0.95,
+      "reason": "Content indicates lucid dream awareness or control."
+    },
+    {
+      "type": "NIGHTMARE",
+      "keywords": ["fear", "threat", "panic", "chased", "trapped", "nightmare", "terror"],
+      "source": "INFERRED",
+      "confidence": 0.9,
+      "reason": "Content indicates fear, threat, or panic signals."
+    },
+    {
+      "type": "NEUTRAL",
+      "keywords": [],
+      "source": "INFERRED",
+      "confidence": 0.55,
+      "reason": "No strong lucid or nightmare signals were found."
+    }
+  ]
+}
