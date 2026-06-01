@@ -77,7 +77,7 @@ public class DreamClassificationService {
 
     return new ClassificationResult(
         DreamClassification.RECURRING,
-        ClassificationSource.INFERRED,
+        ClassificationSource.PATTERN_ENGINE,
         "Dream shares multiple normalized tags with previous saved dreams.",
         0.88,
         System.currentTimeMillis());
@@ -94,9 +94,14 @@ public class DreamClassificationService {
       dream.setClassificationUpdatedAt(System.currentTimeMillis());
       return;
     }
-
-    ClassificationResult inferred = inferFromDreamText(title, content);
-    applyInference(dream, inferred);
+    long now = System.currentTimeMillis();
+    dream.setUserClassification(null);
+    dream.setInferredClassification(null);
+    dream.setEffectiveClassification(DreamClassification.UNKNOWN);
+    dream.setClassificationSource(ClassificationSource.UNKNOWN);
+    dream.setClassificationReason("No classification has been inferred yet.");
+    dream.setTypeConfidence(null);
+    dream.setClassificationUpdatedAt(now);
   }
 
   public void applyInference(DreamEntry dream, ClassificationResult result) {
@@ -126,7 +131,12 @@ public class DreamClassificationService {
       dream.setTypeConfidence(1.0);
     } else if (dream.getInferredClassification() != null) {
       dream.setEffectiveClassification(dream.getInferredClassification());
-      dream.setClassificationSource(ClassificationSource.INFERRED);
+      ClassificationSource source = dream.getClassificationSource();
+      if (source != ClassificationSource.ANALYSIS
+          && source != ClassificationSource.PATTERN_ENGINE) {
+        source = ClassificationSource.ANALYSIS;
+      }
+      dream.setClassificationSource(source);
     } else {
       dream.setEffectiveClassification(DreamClassification.UNKNOWN);
       dream.setClassificationSource(ClassificationSource.UNKNOWN);
@@ -187,14 +197,14 @@ public class DreamClassificationService {
 
   private DreamClassification parseUserClassification(String classification) {
     if (classification == null || classification.isBlank()) {
-      throw new DreamGridException(ApiErrorCode.VALIDATION_ERROR, "Type is required");
+      throw new DreamGridException(ApiErrorCode.VALIDATION_ERROR, "Classification is required");
     }
 
     try {
       return DreamClassification.valueOf(classification.trim().toUpperCase(Locale.ROOT));
     } catch (IllegalArgumentException e) {
       throw new DreamGridException(
-          ApiErrorCode.VALIDATION_ERROR, "Invalid type: " + classification);
+          ApiErrorCode.VALIDATION_ERROR, "Invalid classification: " + classification);
     }
   }
 

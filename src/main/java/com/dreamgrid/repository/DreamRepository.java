@@ -610,8 +610,8 @@ FROM (
     if (value == null || value.isBlank()) {
       return ClassificationSource.UNKNOWN;
     }
-    if ("ANALYSIS".equals(value) || "PATTERN_ENGINE".equals(value)) {
-      return ClassificationSource.INFERRED;
+    if ("INFERRED".equalsIgnoreCase(value)) {
+      return ClassificationSource.ANALYSIS;
     }
     try {
       return ClassificationSource.valueOf(value);

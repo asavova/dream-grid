@@ -629,7 +629,7 @@ public class DreamServiceTest {
   }
 
   @Test
-  public void omittedTypeIsInferredFromContent() throws Exception {
+  public void dreamStartsUnknownWhenNoUserClassificationProvided() throws Exception {
     DreamEntry dream =
         dreamService.saveDream(
             "Unclassified",
@@ -640,8 +640,9 @@ public class DreamServiceTest {
 
     DreamEntry reloaded = repository.findById(dream.getId());
 
-    assertEquals(DreamClassification.NEUTRAL, reloaded.getEffectiveClassification());
-    assertEquals(ClassificationSource.INFERRED, reloaded.getClassificationSource());
+    assertEquals(DreamClassification.UNKNOWN, reloaded.getEffectiveClassification());
+    assertEquals(ClassificationSource.UNKNOWN, reloaded.getClassificationSource());
+    assertEquals(null, reloaded.getInferredClassification());
   }
 
   @Test
@@ -653,8 +654,11 @@ public class DreamServiceTest {
             "2026-05-31",
             null,
             null);
+    analysisClient.nextResult = "{\"summary\":\"Lucid signals.\",\"modelVersion\":\"v1\"}";
+    dreamService.analyzeDream(dream.getId());
     DreamEntry reloaded = repository.findById(dream.getId());
     assertEquals(DreamClassification.LUCID, reloaded.getEffectiveClassification());
+    assertEquals(ClassificationSource.ANALYSIS, reloaded.getClassificationSource());
   }
 
   @Test
@@ -662,8 +666,11 @@ public class DreamServiceTest {
     DreamEntry dream =
         dreamService.saveDream(
             "Night fear", "I was trapped and chased in panic.", "2026-05-31", null, null);
+    analysisClient.nextResult = "{\"summary\":\"Nightmare signals.\",\"modelVersion\":\"v1\"}";
+    dreamService.analyzeDream(dream.getId());
     DreamEntry reloaded = repository.findById(dream.getId());
     assertEquals(DreamClassification.NIGHTMARE, reloaded.getEffectiveClassification());
+    assertEquals(ClassificationSource.ANALYSIS, reloaded.getClassificationSource());
   }
 
   @Test
@@ -672,7 +679,7 @@ public class DreamServiceTest {
         dreamService.saveDream(
             "Same dream again", "The same dream happened again.", "2026-05-31", null, null);
     DreamEntry reloaded = repository.findById(dream.getId());
-    assertEquals(DreamClassification.NEUTRAL, reloaded.getEffectiveClassification());
+    assertEquals(DreamClassification.UNKNOWN, reloaded.getEffectiveClassification());
   }
 
   @Test
@@ -707,7 +714,7 @@ public class DreamServiceTest {
 
     assertEquals(DreamClassification.NIGHTMARE, reloaded.getInferredClassification());
     assertEquals(DreamClassification.NIGHTMARE, reloaded.getEffectiveClassification());
-    assertEquals(ClassificationSource.INFERRED, reloaded.getClassificationSource());
+    assertEquals(ClassificationSource.ANALYSIS, reloaded.getClassificationSource());
     assertTrue(reloaded.getClassificationReason().contains("fear"));
   }
 
@@ -749,7 +756,7 @@ public class DreamServiceTest {
 
     assertEquals(null, reloaded.getUserClassification());
     assertEquals(DreamClassification.NIGHTMARE, reloaded.getEffectiveClassification());
-    assertEquals(ClassificationSource.INFERRED, reloaded.getClassificationSource());
+    assertEquals(ClassificationSource.ANALYSIS, reloaded.getClassificationSource());
   }
 
   @Test
@@ -775,7 +782,7 @@ public class DreamServiceTest {
 
     assertEquals(DreamClassification.RECURRING, reloaded.getInferredClassification());
     assertEquals(DreamClassification.RECURRING, reloaded.getEffectiveClassification());
-    assertEquals(ClassificationSource.INFERRED, reloaded.getClassificationSource());
+    assertEquals(ClassificationSource.PATTERN_ENGINE, reloaded.getClassificationSource());
   }
 
   @Test
@@ -794,7 +801,7 @@ public class DreamServiceTest {
     DreamEntry reloaded = repository.findById(dream.getId());
 
     assertEquals(DreamClassification.NEUTRAL, reloaded.getEffectiveClassification());
-    assertEquals(ClassificationSource.INFERRED, reloaded.getClassificationSource());
+    assertEquals(ClassificationSource.ANALYSIS, reloaded.getClassificationSource());
   }
 
   @Test
@@ -834,7 +841,7 @@ public class DreamServiceTest {
     dreamService.analyzeDream(dream.getId());
     DreamEntry reloaded = dreamService.getDreamClassification(dream.getId());
 
-    assertEquals(ClassificationSource.INFERRED, reloaded.getClassificationSource());
+    assertEquals(ClassificationSource.ANALYSIS, reloaded.getClassificationSource());
     assertTrue(reloaded.getClassificationReason().contains("fear"));
   }
 

@@ -95,13 +95,14 @@ Dream classification is stored separately from analysis status. `DreamClassifica
 Classification has a source:
 
 - `USER` for explicit user overrides
-- `INFERRED` for deterministic inference from dream text and recurring tag patterns
+- `ANALYSIS` for deterministic inference from dream text during analysis/reanalysis
+- `PATTERN_ENGINE` for recurring-pattern classification from historical tag overlap
 - `UNKNOWN` when nothing has classified the dream yet
 
 `DreamClassificationService` loads text classification rules from `python/rules/classification_rules.json` and applies the precedence rule:
 
 1. user classification
-2. inferred type from deterministic rules and recurring tag overlap
+2. inferred type from deterministic analysis rules and recurring tag overlap
 3. unknown
 
 User overrides do not delete inferred classification. Reanalysis can update inferred classification, but the effective classification remains the user override until the override is cleared.

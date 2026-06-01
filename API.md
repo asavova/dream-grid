@@ -44,9 +44,9 @@ Validation rules:
 Type behavior:
 
 - If `type` is provided, it is stored as `userType` and becomes `effectiveType`.
-- If `type` is omitted, type is inferred deterministically from title/content and stored as `inferredType`.
-- `typeSource` is `USER`, `INFERRED`, or `UNKNOWN`.
-- `typeConfidence` stores the deterministic inference confidence.
+- If `type` is omitted, the dream starts with `effectiveType` set to `UNKNOWN`.
+- `typeSource` is `USER`, `ANALYSIS`, `PATTERN_ENGINE`, or `UNKNOWN`.
+- `inferredType` is populated during analysis/reanalysis when deterministic rules match.
 
 ## Read Dreams
 
@@ -278,7 +278,7 @@ DELETE /dreams/{id}/classification/override
   "userType": null,
   "inferredType": "NIGHTMARE",
   "effectiveType": "NIGHTMARE",
-  "typeSource": "INFERRED",
+  "typeSource": "ANALYSIS",
   "classificationReason": "Content indicates fear, threat, or panic signals.",
   "typeConfidence": 0.9,
   "classificationUpdatedAt": 1780250100000

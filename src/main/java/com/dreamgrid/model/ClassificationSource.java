@@ -2,6 +2,7 @@ package com.dreamgrid.model;
 
 public enum ClassificationSource {
   USER,
-  INFERRED,
+  ANALYSIS,
+  PATTERN_ENGINE,
   UNKNOWN
 }
