@@ -3,8 +3,6 @@ package com.dreamgrid.model;
 public interface IDreamEntry {
   int getId();
 
-  void setId(int id);
-
   String getTitle();
 
   String getContent();
@@ -13,23 +11,35 @@ public interface IDreamEntry {
 
   String getDreamDate();
 
-  boolean isAnalyzed();
-
-  void setAnalyzed(boolean analyzed);
-
   String getAnalysisResult();
-
-  void setAnalysisResult(String analysisResult);
 
   Long getAnalyzedAt();
 
-  void setAnalyzedAt(Long analyzedAt);
-
   String getAnalysisVersion();
-
-  void setAnalysisVersion(String analysisVersion);
 
   AnalysisStatus getAnalysisStatus();
 
-  void setAnalysisStatus(AnalysisStatus analysisStatus);
+  DreamClassification getUserClassification();
+
+  DreamClassification getInferredClassification();
+
+  DreamClassification getEffectiveClassification();
+
+  ClassificationSource getClassificationSource();
+
+  String getClassificationReason();
+
+  Double getTypeConfidence();
+
+  Long getClassificationUpdatedAt();
+
+  default boolean isAnalyzed() {
+    return getAnalysisStatus() == AnalysisStatus.COMPLETED;
+  }
+
+  default boolean hasUsableAnalysis() {
+    return getAnalysisStatus() == AnalysisStatus.COMPLETED
+        && getAnalysisResult() != null
+        && !getAnalysisResult().isBlank();
+  }
 }

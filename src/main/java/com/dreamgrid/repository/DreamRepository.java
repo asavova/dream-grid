@@ -7,6 +7,8 @@ import com.dreamgrid.model.ClassificationSource;
 import com.dreamgrid.model.DreamClassification;
 import com.dreamgrid.model.DreamEntry;
 import com.dreamgrid.model.DreamTag;
+import com.dreamgrid.model.IDreamEntry;
+import com.dreamgrid.model.IMutableDreamEntry;
 import com.dreamgrid.model.TagSource;
 import java.sql.*;
 import java.util.ArrayList;
@@ -23,7 +25,7 @@ public class DreamRepository {
     return connection;
   }
 
-  public void insert(DreamEntry entry) throws SQLException {
+  public void insert(IMutableDreamEntry entry) throws SQLException {
     String sql =
         """
 INSERT INTO dreams (
@@ -68,7 +70,7 @@ INSERT INTO dreams (
     }
   }
 
-  public void update(DreamEntry entry) throws SQLException {
+  public void update(IDreamEntry entry) throws SQLException {
     String sql =
         """
 UPDATE dreams SET
@@ -107,7 +109,7 @@ WHERE id = ?
     }
   }
 
-  public void updateAnalysisFields(DreamEntry entry) throws SQLException {
+  public void updateAnalysisFields(IDreamEntry entry) throws SQLException {
     String sql =
         "UPDATE dreams SET analyzed = ?, analysis_result = ?, analyzed_at = ?, analysis_version = ?, analysis_status = ? WHERE id = ?";
     try (PreparedStatement stmt = connection.prepareStatement(sql)) {
@@ -122,7 +124,7 @@ WHERE id = ?
     }
   }
 
-  public void updateClassificationFields(DreamEntry entry) throws SQLException {
+  public void updateClassificationFields(IDreamEntry entry) throws SQLException {
     String sql =
         """
 UPDATE dreams SET

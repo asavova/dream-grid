@@ -14,6 +14,7 @@ import com.dreamgrid.model.ClassificationSource;
 import com.dreamgrid.model.DreamClassification;
 import com.dreamgrid.model.DreamEntry;
 import com.dreamgrid.model.DreamQuestion;
+import com.dreamgrid.model.DreamSnapshot;
 import com.dreamgrid.model.DreamTag;
 import com.dreamgrid.model.IDreamEntry;
 import com.dreamgrid.model.TagSource;
@@ -163,10 +164,11 @@ public class DreamService {
           ApiErrorCode.NOT_FOUND, "Dream with ID " + dreamId + " not found.");
     }
 
-    contentSafetyService.validateDreamContent(dream.getContent());
+    IDreamEntry dreamState = DreamSnapshot.from(dream);
+    contentSafetyService.validateDreamContent(dreamState.getContent());
 
-    if (!forceReanalysis && hasValidCachedAnalysis(dream)) {
-      return dream.getAnalysisResult();
+    if (!forceReanalysis && hasValidCachedAnalysis(dreamState)) {
+      return dreamState.getAnalysisResult();
     }
 
     AnalysisRun run = analysisRunRepository.createPendingRun(dreamId, System.currentTimeMillis());
@@ -368,11 +370,12 @@ public class DreamService {
           ApiErrorCode.NOT_FOUND, "Dream with ID " + dreamId + " not found.");
     }
 
+    IDreamEntry dreamState = DreamSnapshot.from(dream);
     validator.validateQuestion(question);
-    contentSafetyService.validateDreamContent(dream.getContent());
+    contentSafetyService.validateDreamContent(dreamState.getContent());
     contentSafetyService.validateQuestion(question);
 
-    if (!hasCompletedAnalysis(dream)) {
+    if (!hasCompletedAnalysis(dreamState)) {
       throw new DreamGridException(
           ApiErrorCode.VALIDATION_ERROR, "Dream must be analyzed before asking questions.");
     }
@@ -384,7 +387,8 @@ public class DreamService {
     }
 
     String answer =
-        analysisClient.askQuestion(dream.getContent(), dream.getAnalysisResult(), question);
+        analysisClient.askQuestion(
+            dreamState.getContent(), dreamState.getAnalysisResult(), question);
     return runInTransactionWithResult(
             () -> dreamQuestionRepository.insert(dreamId, completedRun.getId(), question, answer))
         .getAnswer();

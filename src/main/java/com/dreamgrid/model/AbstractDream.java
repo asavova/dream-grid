@@ -1,6 +1,6 @@
 package com.dreamgrid.model;
 
-public abstract class AbstractDream implements IDreamEntry {
+public abstract class AbstractDream implements IMutableDreamEntry {
   protected String title;
   protected String content;
   protected long timestamp;
