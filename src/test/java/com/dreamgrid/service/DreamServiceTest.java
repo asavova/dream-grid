@@ -13,6 +13,7 @@ import com.dreamgrid.model.DreamClassification;
 import com.dreamgrid.model.DreamEntry;
 import com.dreamgrid.model.DreamQuestion;
 import com.dreamgrid.model.DreamTag;
+import com.dreamgrid.model.IDreamEntry;
 import com.dreamgrid.repository.DreamRepository;
 import com.dreamgrid.testsupport.TestSchema;
 import java.io.IOException;
@@ -299,11 +300,14 @@ public class DreamServiceTest {
             List.of("manual"));
     analysisClient.nextResult = "{\"summary\":\"first\",\"modelVersion\":\"v1\"}";
     dreamService.analyzeDream(dream.getId());
+    dreamService.askQuestionAboutDream(dream.getId(), "What happened?");
 
     assertEquals(
         1, countRows("SELECT COUNT(*) FROM analysis_runs WHERE dream_id = ?", dream.getId()));
     assertTrue(
         countRows("SELECT COUNT(*) FROM dream_tag_links WHERE dream_id = ?", dream.getId()) > 0);
+    assertEquals(
+        1, countRows("SELECT COUNT(*) FROM dream_questions WHERE dream_id = ?", dream.getId()));
 
     dreamService.deleteDream(dream.getId());
 
@@ -312,6 +316,8 @@ public class DreamServiceTest {
         0, countRows("SELECT COUNT(*) FROM analysis_runs WHERE dream_id = ?", dream.getId()));
     assertEquals(
         0, countRows("SELECT COUNT(*) FROM dream_tag_links WHERE dream_id = ?", dream.getId()));
+    assertEquals(
+        0, countRows("SELECT COUNT(*) FROM dream_questions WHERE dream_id = ?", dream.getId()));
     assertEquals(
         0, countRows("SELECT COUNT(*) FROM dream_tags WHERE normalized_name = ?", "manual"));
   }
@@ -958,8 +964,25 @@ public class DreamServiceTest {
     return dream;
   }
 
-  private List<String> tagNames(DreamEntry dream) {
-    return dream.getSymbolTags().stream().map(DreamTag::getNormalizedName).toList();
+  private List<String> tagNames(IDreamEntry dream) {
+    if (!(dream instanceof DreamEntry entry)) {
+      throw new IllegalArgumentException("Dream entry must support tag access");
+    }
+    return entry.getSymbolTags().stream().map(DreamTag::getNormalizedName).toList();
+  }
+
+  private String analysisVersionOf(IDreamEntry dream) {
+    return dream.getAnalysisVersion();
+  }
+
+  @Test
+  public void interfaceExposesSharedAnalysisState() throws Exception {
+    DreamEntry dream = completedDream("cached analysis", 100L, EXPECTED_ANALYSIS_VERSION);
+    repository.insert(dream);
+    IDreamEntry shared = repository.findById(dream.getId());
+
+    assertEquals(EXPECTED_ANALYSIS_VERSION, analysisVersionOf(shared));
+    assertEquals(AnalysisStatus.COMPLETED, shared.getAnalysisStatus());
   }
 
   private int tagCount(String normalizedName) throws Exception {

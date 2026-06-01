@@ -18,17 +18,31 @@ import java.util.Locale;
 public class DreamClassificationService {
   private static final Path DEFAULT_RULE_PATH =
       Path.of("python", "rules", "classification_rules.json");
+  private static final int DEFAULT_MIN_SHARED_TAGS = 2;
+  private static final int DEFAULT_MIN_MATCHING_DREAMS = 1;
 
   private final DreamRepository dreamRepository;
   private final List<TypeRule> rules;
+  private final int minSharedTagsForRecurring;
+  private final int minMatchingDreamsForRecurring;
 
   public DreamClassificationService(DreamRepository dreamRepository) {
-    this(dreamRepository, DEFAULT_RULE_PATH);
+    this(dreamRepository, DEFAULT_RULE_PATH, DEFAULT_MIN_SHARED_TAGS, DEFAULT_MIN_MATCHING_DREAMS);
   }
 
   DreamClassificationService(DreamRepository dreamRepository, Path rulePath) {
+    this(dreamRepository, rulePath, DEFAULT_MIN_SHARED_TAGS, DEFAULT_MIN_MATCHING_DREAMS);
+  }
+
+  DreamClassificationService(
+      DreamRepository dreamRepository,
+      Path rulePath,
+      int minSharedTagsForRecurring,
+      int minMatchingDreamsForRecurring) {
     this.dreamRepository = dreamRepository;
     this.rules = parseRules(new RuleFileLoader().load(rulePath, "classifications"));
+    this.minSharedTagsForRecurring = Math.max(1, minSharedTagsForRecurring);
+    this.minMatchingDreamsForRecurring = Math.max(1, minMatchingDreamsForRecurring);
   }
 
   public ClassificationResult inferFromDreamText(String title, String content) {
@@ -65,13 +79,14 @@ public class DreamClassificationService {
             .map(DreamTag::getNormalizedName)
             .filter(tag -> !tag.isBlank())
             .toList();
-    if (normalizedTags.size() < 2) {
+    if (normalizedTags.size() < minSharedTagsForRecurring) {
       return null;
     }
 
     int matchingDreams =
-        dreamRepository.countDreamsSharingAtLeastTags(dream.getId(), normalizedTags, 2);
-    if (matchingDreams == 0) {
+        dreamRepository.countDreamsSharingAtLeastTags(
+            dream.getId(), normalizedTags, minSharedTagsForRecurring);
+    if (matchingDreams < minMatchingDreamsForRecurring) {
       return null;
     }
 

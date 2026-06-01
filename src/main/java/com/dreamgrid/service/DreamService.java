@@ -15,6 +15,7 @@ import com.dreamgrid.model.DreamClassification;
 import com.dreamgrid.model.DreamEntry;
 import com.dreamgrid.model.DreamQuestion;
 import com.dreamgrid.model.DreamTag;
+import com.dreamgrid.model.IDreamEntry;
 import com.dreamgrid.model.TagSource;
 import com.dreamgrid.repository.AnalysisRunRepository;
 import com.dreamgrid.repository.DreamQuestionRepository;
@@ -53,9 +54,14 @@ public class DreamService {
     this.analysisClient = new DreamAnalysisClient(config);
     this.expectedAnalysisVersion = config.getAnalysisModelVersion();
     this.validator = new DreamValidator();
-    this.contentSafetyService = new ContentSafetyService();
+    this.contentSafetyService = new ContentSafetyService(config.getContentSafetyRulesPath());
     this.tagNormalizationService = new TagNormalizationService();
-    this.classificationService = new DreamClassificationService(dreamRepository);
+    this.classificationService =
+        new DreamClassificationService(
+            dreamRepository,
+            config.getClassificationRulesPath(),
+            config.getRecurringMinSharedTags(),
+            config.getRecurringMinMatchingDreams());
     this.dreamInsightService = new DreamInsightService(dreamRepository, tagNormalizationService);
   }
 
@@ -398,7 +404,7 @@ public class DreamService {
     return question;
   }
 
-  private boolean hasValidCachedAnalysis(DreamEntry dream) {
+  private boolean hasValidCachedAnalysis(IDreamEntry dream) {
     if (!hasCompletedAnalysis(dream)) {
       return false;
     }
@@ -410,7 +416,7 @@ public class DreamService {
     return expectedAnalysisVersion.equals(dream.getAnalysisVersion());
   }
 
-  private boolean hasCompletedAnalysis(DreamEntry dream) {
+  private boolean hasCompletedAnalysis(IDreamEntry dream) {
     return dream.getAnalysisStatus() == AnalysisStatus.COMPLETED
         && dream.getAnalysisResult() != null
         && !dream.getAnalysisResult().isBlank();

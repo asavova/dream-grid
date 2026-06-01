@@ -108,6 +108,7 @@ Classification has a source:
 User overrides do not delete inferred classification. Reanalysis can update inferred classification, but the effective classification remains the user override until the override is cleared.
 
 `RECURRING` is intentionally not inferred from text keywords alone. Historical tag overlap can promote a dream to recurring during analysis workflows.
+Recurring pattern thresholds and Java rule-file paths are configuration-driven through `AppConfig`.
 
 ## Analysis Flow
 

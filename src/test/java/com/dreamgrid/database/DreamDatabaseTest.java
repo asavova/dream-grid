@@ -47,7 +47,17 @@ public class DreamDatabaseTest {
 
     DreamDatabase.initialize(
         new AppConfig(
-            "127.0.0.1", 8080, "http://127.0.0.1:5005", "", databasePath.toString(), 3000, 30000));
+            "127.0.0.1",
+            8080,
+            "http://127.0.0.1:5005",
+            "",
+            databasePath.toString(),
+            3000,
+            30000,
+            "python/rules/content_safety_rules.json",
+            "python/rules/classification_rules.json",
+            2,
+            1));
 
     DreamRepository repository = new DreamRepository(DreamDatabase.getConnection());
     List<DreamTag> migratedTags = repository.listTagsForDream(1);
