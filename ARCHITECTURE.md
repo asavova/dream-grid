@@ -69,6 +69,19 @@ Search and filtering are coordinated by `DreamService`, but the SQL stays in `Dr
 - analysis status
 - combined filtering through `GET /dreams`
 
+## Insight Flow
+
+`DreamInsightService` provides deterministic, non-AI tag analytics from stored data:
+
+- frequent tags (`GET /insights/tags`)
+- recurring tags (`GET /insights/recurring`)
+- tag co-occurrences (`GET /insights/co-occurrences`)
+- per-tag detail summary (`GET /insights/tags/{tag}`)
+
+The service uses normalized tag names and delegates all SQL to `DreamRepository`.
+Repository queries compute counts from distinct `(dream_id, normalized_tag)` presence so duplicate tag links in one dream do not inflate metrics.
+Co-occurrence pairs are generated with stable ordering and sorted by count descending, then tag names ascending.
+
 Dream editing is also service-driven. `PUT /dreams/{id}` merges incoming fields with the current row, runs the same validation rules as create, and then applies lifecycle logic:
 
 - metadata-only edits keep the existing latest analysis snapshot

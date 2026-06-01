@@ -139,6 +139,34 @@ Example response:
 ]
 ```
 
+## Tag Insights
+
+```http
+GET /insights/tags
+GET /insights/recurring
+GET /insights/co-occurrences
+GET /insights/tags/{tag}
+```
+
+`GET /insights/tags` returns frequent normalized tags using unique dream presence per tag.
+
+`GET /insights/recurring` returns only tags that appear in more than one dream.
+
+`GET /insights/co-occurrences` returns stable tag pairs independent of input order. Pairs are sorted by `count` descending, then tag names ascending.
+
+`GET /insights/tags/{tag}` returns:
+
+- normalized tag name
+- usage count
+- related tags with co-occurrence counts
+- recent dream IDs for that tag
+
+Insight rules:
+
+- tag matching is case-insensitive through normalization
+- duplicate links for the same tag in one dream do not inflate counts
+- empty databases return empty lists, not errors
+
 ## Analyze Dream
 
 ```http

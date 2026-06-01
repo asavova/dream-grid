@@ -3,6 +3,10 @@ package com.dreamgrid.service;
 import com.dreamgrid.api.ApiErrorCode;
 import com.dreamgrid.client.DreamAnalysisClient;
 import com.dreamgrid.config.AppConfig;
+import com.dreamgrid.dto.RecurringTagResponse;
+import com.dreamgrid.dto.TagCoOccurrenceResponse;
+import com.dreamgrid.dto.TagDetailInsightResponse;
+import com.dreamgrid.dto.TagInsightResponse;
 import com.dreamgrid.dto.TagUsage;
 import com.dreamgrid.model.AnalysisRun;
 import com.dreamgrid.model.AnalysisStatus;
@@ -38,6 +42,7 @@ public class DreamService {
   private final ContentSafetyService contentSafetyService;
   private final TagNormalizationService tagNormalizationService;
   private final DreamClassificationService classificationService;
+  private final DreamInsightService dreamInsightService;
   private final Gson gson = new Gson();
 
   public DreamService(Connection connection) {
@@ -51,6 +56,7 @@ public class DreamService {
     this.contentSafetyService = new ContentSafetyService();
     this.tagNormalizationService = new TagNormalizationService();
     this.classificationService = new DreamClassificationService(dreamRepository);
+    this.dreamInsightService = new DreamInsightService(dreamRepository, tagNormalizationService);
   }
 
   public DreamService(DreamRepository dreamRepository, DreamAnalysisClient analysisClient) {
@@ -91,6 +97,7 @@ public class DreamService {
         classificationService != null
             ? classificationService
             : new DreamClassificationService(dreamRepository);
+    this.dreamInsightService = new DreamInsightService(dreamRepository, tagNormalizationService);
   }
 
   public void addDream(DreamEntry dream) throws SQLException {
@@ -328,6 +335,22 @@ public class DreamService {
 
   public List<TagUsage> getTagUsageCounts() throws SQLException {
     return dreamRepository.getTagUsageCounts();
+  }
+
+  public List<TagInsightResponse> getFrequentTagInsights() throws SQLException {
+    return dreamInsightService.getFrequentTags();
+  }
+
+  public List<RecurringTagResponse> getRecurringTagInsights() throws SQLException {
+    return dreamInsightService.getRecurringTags();
+  }
+
+  public List<TagCoOccurrenceResponse> getTagCoOccurrenceInsights() throws SQLException {
+    return dreamInsightService.getTagCoOccurrences();
+  }
+
+  public TagDetailInsightResponse getTagDetailInsight(String tag) throws SQLException {
+    return dreamInsightService.getTagDetailSummary(tag);
   }
 
   public String askQuestionAboutDream(int dreamId, String question)

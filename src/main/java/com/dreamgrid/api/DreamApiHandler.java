@@ -8,6 +8,10 @@ import com.dreamgrid.dto.DreamRequest;
 import com.dreamgrid.dto.DreamResponse;
 import com.dreamgrid.dto.ErrorResponse;
 import com.dreamgrid.dto.QuestionRequest;
+import com.dreamgrid.dto.RecurringTagResponse;
+import com.dreamgrid.dto.TagCoOccurrenceResponse;
+import com.dreamgrid.dto.TagDetailInsightResponse;
+import com.dreamgrid.dto.TagInsightResponse;
 import com.dreamgrid.dto.TagResponse;
 import com.dreamgrid.dto.UpdateDreamClassificationRequest;
 import com.dreamgrid.dto.UpdateDreamRequest;
@@ -51,6 +55,14 @@ public class DreamApiHandler implements HttpHandler {
     try {
       if ("/health".equals(path) && "GET".equals(method)) {
         handleHealth(exchange);
+      } else if ("/insights/tags".equals(path) && "GET".equals(method)) {
+        handleTagInsights(exchange);
+      } else if ("/insights/recurring".equals(path) && "GET".equals(method)) {
+        handleRecurringTagInsights(exchange);
+      } else if ("/insights/co-occurrences".equals(path) && "GET".equals(method)) {
+        handleTagCoOccurrenceInsights(exchange);
+      } else if (path.matches("/insights/tags/[^/]+$") && "GET".equals(method)) {
+        handleTagDetailInsights(exchange);
       } else if ("/tags".equals(path) && "GET".equals(method)) {
         handleTags(exchange);
       } else if ("/dreams/search".equals(path) && "GET".equals(method)) {
@@ -155,6 +167,47 @@ public class DreamApiHandler implements HttpHandler {
       sendJsonResponse(exchange, 200, gson.toJson(responses));
     } catch (SQLException e) {
       logger.log(Level.SEVERE, "Database error listing tags", e);
+      sendError(exchange, 500, ApiErrorCode.INTERNAL_ERROR, "Database error: " + e.getMessage());
+    }
+  }
+
+  private void handleTagInsights(HttpExchange exchange) throws IOException {
+    try {
+      List<TagInsightResponse> insights = dreamService.getFrequentTagInsights();
+      sendJsonResponse(exchange, 200, gson.toJson(insights));
+    } catch (SQLException e) {
+      logger.log(Level.SEVERE, "Database error listing tag insights", e);
+      sendError(exchange, 500, ApiErrorCode.INTERNAL_ERROR, "Database error: " + e.getMessage());
+    }
+  }
+
+  private void handleRecurringTagInsights(HttpExchange exchange) throws IOException {
+    try {
+      List<RecurringTagResponse> insights = dreamService.getRecurringTagInsights();
+      sendJsonResponse(exchange, 200, gson.toJson(insights));
+    } catch (SQLException e) {
+      logger.log(Level.SEVERE, "Database error listing recurring tag insights", e);
+      sendError(exchange, 500, ApiErrorCode.INTERNAL_ERROR, "Database error: " + e.getMessage());
+    }
+  }
+
+  private void handleTagCoOccurrenceInsights(HttpExchange exchange) throws IOException {
+    try {
+      List<TagCoOccurrenceResponse> insights = dreamService.getTagCoOccurrenceInsights();
+      sendJsonResponse(exchange, 200, gson.toJson(insights));
+    } catch (SQLException e) {
+      logger.log(Level.SEVERE, "Database error listing tag co-occurrence insights", e);
+      sendError(exchange, 500, ApiErrorCode.INTERNAL_ERROR, "Database error: " + e.getMessage());
+    }
+  }
+
+  private void handleTagDetailInsights(HttpExchange exchange) throws IOException {
+    try {
+      String tag = extractLastPathSegment(exchange.getRequestURI().getPath());
+      TagDetailInsightResponse insight = dreamService.getTagDetailInsight(tag);
+      sendJsonResponse(exchange, 200, gson.toJson(insight));
+    } catch (SQLException e) {
+      logger.log(Level.SEVERE, "Database error getting tag detail insight", e);
       sendError(exchange, 500, ApiErrorCode.INTERNAL_ERROR, "Database error: " + e.getMessage());
     }
   }

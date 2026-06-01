@@ -1,5 +1,6 @@
 package com.dreamgrid.repository;
 
+import com.dreamgrid.dto.TagCoOccurrenceResponse;
 import com.dreamgrid.dto.TagUsage;
 import com.dreamgrid.model.AnalysisStatus;
 import com.dreamgrid.model.ClassificationSource;
@@ -209,11 +210,15 @@ WHERE id = ?
   public List<TagUsage> getTagUsageCounts() throws SQLException {
     String sql =
         """
-SELECT t.name, t.normalized_name, COUNT(DISTINCT l.dream_id) AS usage_count
-FROM dream_tags t
-JOIN dream_tag_links l ON l.tag_id = t.id
-GROUP BY t.id, t.name, t.normalized_name
-ORDER BY usage_count DESC, t.normalized_name ASC
+WITH dream_tag_presence AS (
+  SELECT DISTINCT l.dream_id, t.id AS tag_id, t.name, t.normalized_name
+  FROM dream_tag_links l
+  JOIN dream_tags t ON t.id = l.tag_id
+)
+SELECT name, normalized_name, COUNT(DISTINCT dream_id) AS usage_count
+FROM dream_tag_presence
+GROUP BY tag_id, name, normalized_name
+ORDER BY usage_count DESC, normalized_name ASC
 """;
     List<TagUsage> usages = new ArrayList<>();
     try (PreparedStatement stmt = connection.prepareStatement(sql);
@@ -225,6 +230,126 @@ ORDER BY usage_count DESC, t.normalized_name ASC
       }
     }
     return usages;
+  }
+
+  public List<TagUsage> getRecurringTagUsageCounts() throws SQLException {
+    String sql =
+        """
+WITH dream_tag_presence AS (
+  SELECT DISTINCT l.dream_id, t.id AS tag_id, t.name, t.normalized_name
+  FROM dream_tag_links l
+  JOIN dream_tags t ON t.id = l.tag_id
+)
+SELECT name, normalized_name, COUNT(DISTINCT dream_id) AS usage_count
+FROM dream_tag_presence
+GROUP BY tag_id, name, normalized_name
+HAVING COUNT(DISTINCT dream_id) > 1
+ORDER BY usage_count DESC, normalized_name ASC
+""";
+    List<TagUsage> usages = new ArrayList<>();
+    try (PreparedStatement stmt = connection.prepareStatement(sql);
+        ResultSet rs = stmt.executeQuery()) {
+      while (rs.next()) {
+        usages.add(
+            new TagUsage(
+                rs.getString("name"), rs.getString("normalized_name"), rs.getInt("usage_count")));
+      }
+    }
+    return usages;
+  }
+
+  public List<TagCoOccurrenceResponse> getTagCoOccurrences() throws SQLException {
+    String sql =
+        """
+WITH dream_tag_presence AS (
+  SELECT DISTINCT l.dream_id, t.normalized_name
+  FROM dream_tag_links l
+  JOIN dream_tags t ON t.id = l.tag_id
+)
+SELECT p1.normalized_name AS first_tag,
+       p2.normalized_name AS second_tag,
+       COUNT(DISTINCT p1.dream_id) AS pair_count
+FROM dream_tag_presence p1
+JOIN dream_tag_presence p2
+  ON p1.dream_id = p2.dream_id
+ AND p1.normalized_name < p2.normalized_name
+GROUP BY first_tag, second_tag
+ORDER BY pair_count DESC, first_tag ASC, second_tag ASC
+""";
+    List<TagCoOccurrenceResponse> pairs = new ArrayList<>();
+    try (PreparedStatement stmt = connection.prepareStatement(sql);
+        ResultSet rs = stmt.executeQuery()) {
+      while (rs.next()) {
+        pairs.add(
+            new TagCoOccurrenceResponse(
+                rs.getString("first_tag"), rs.getString("second_tag"), rs.getInt("pair_count")));
+      }
+    }
+    return pairs;
+  }
+
+  public List<TagCoOccurrenceResponse> getRelatedTagCoOccurrences(String normalizedTag)
+      throws SQLException {
+    String sql =
+        """
+WITH dream_tag_presence AS (
+  SELECT DISTINCT l.dream_id, t.normalized_name
+  FROM dream_tag_links l
+  JOIN dream_tags t ON t.id = l.tag_id
+),
+tag_pairs AS (
+  SELECT p1.normalized_name AS first_tag,
+         p2.normalized_name AS second_tag,
+         COUNT(DISTINCT p1.dream_id) AS pair_count
+  FROM dream_tag_presence p1
+  JOIN dream_tag_presence p2
+    ON p1.dream_id = p2.dream_id
+   AND p1.normalized_name < p2.normalized_name
+  GROUP BY first_tag, second_tag
+)
+SELECT first_tag, second_tag, pair_count
+FROM tag_pairs
+WHERE first_tag = ? OR second_tag = ?
+ORDER BY pair_count DESC, first_tag ASC, second_tag ASC
+""";
+    List<TagCoOccurrenceResponse> pairs = new ArrayList<>();
+    try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+      stmt.setString(1, normalizedTag);
+      stmt.setString(2, normalizedTag);
+      try (ResultSet rs = stmt.executeQuery()) {
+        while (rs.next()) {
+          pairs.add(
+              new TagCoOccurrenceResponse(
+                  rs.getString("first_tag"), rs.getString("second_tag"), rs.getInt("pair_count")));
+        }
+      }
+    }
+    return pairs;
+  }
+
+  public List<Integer> findRecentDreamIdsByTag(String normalizedTag, int limit)
+      throws SQLException {
+    String sql =
+        """
+SELECT DISTINCT d.id
+FROM dreams d
+JOIN dream_tag_links l ON l.dream_id = d.id
+JOIN dream_tags t ON t.id = l.tag_id
+WHERE t.normalized_name = ?
+ORDER BY d.timestamp DESC, d.id DESC
+LIMIT ?
+""";
+    List<Integer> dreamIds = new ArrayList<>();
+    try (PreparedStatement stmt = connection.prepareStatement(sql)) {
+      stmt.setString(1, normalizedTag);
+      stmt.setInt(2, limit);
+      try (ResultSet rs = stmt.executeQuery()) {
+        while (rs.next()) {
+          dreamIds.add(rs.getInt("id"));
+        }
+      }
+    }
+    return dreamIds;
   }
 
   public List<DreamEntry> getAll() throws SQLException {
