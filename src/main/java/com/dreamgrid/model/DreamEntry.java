@@ -69,6 +69,16 @@ public class DreamEntry extends AbstractDream {
     setAnalysisStatus(AnalysisStatus.FAILED);
   }
 
+  public void failAnalysisPreservingPreviousSuccess() {
+    if (analysisStatus == AnalysisStatus.COMPLETED
+        && analysisResult != null
+        && !analysisResult.isBlank()
+        && analyzedAt != null) {
+      return;
+    }
+    failAnalysis();
+  }
+
   public void markAnalysisStale() {
     setAnalysisStatus(AnalysisStatus.STALE);
   }

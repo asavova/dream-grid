@@ -82,7 +82,7 @@ public class DreamServiceTest {
     assertEquals("old analysis", reloaded.getAnalysisResult());
     assertEquals(Long.valueOf(100L), reloaded.getAnalyzedAt());
     assertEquals(EXPECTED_ANALYSIS_VERSION, reloaded.getAnalysisVersion());
-    assertEquals(AnalysisStatus.FAILED, reloaded.getAnalysisStatus());
+    assertEquals(AnalysisStatus.COMPLETED, reloaded.getAnalysisStatus());
   }
 
   @Test
@@ -189,6 +189,49 @@ public class DreamServiceTest {
     assertEquals(1, runs.size());
     assertEquals(AnalysisStatus.FAILED, runs.get(0).getStatus());
     assertEquals("analysis service unavailable", runs.get(0).getFailureReason());
+  }
+
+  @Test
+  public void questionAnsweringStillWorksAfterFailedReanalysis() throws Exception {
+    DreamEntry dream =
+        dreamService.saveDream(
+            "Dream",
+            "I crossed a bright sky portal.",
+            "2026-05-31",
+            DreamClassification.NEUTRAL,
+            null);
+    analysisClient.nextResult = "{\"summary\":\"A transition dream.\",\"modelVersion\":\"v1\"}";
+    dreamService.analyzeDream(dream.getId());
+    analysisClient.nextFailure = new IOException("analysis service unavailable");
+
+    assertThrows(IOException.class, () -> dreamService.reanalyzeDream(dream.getId()));
+    analysisClient.nextFailure = null;
+    analysisClient.nextAnswer = "Question still works after failed reanalysis.";
+
+    String answer = dreamService.askQuestionAboutDream(dream.getId(), "What does the portal mean?");
+
+    assertEquals("Question still works after failed reanalysis.", answer);
+    assertEquals(1, analysisClient.questionCalls);
+  }
+
+  @Test
+  public void firstAnalysisFailureMarksDreamAsFailed() throws Exception {
+    DreamEntry dream =
+        dreamService.saveDream(
+            "Dream",
+            "I crossed a bright sky portal.",
+            "2026-05-31",
+            DreamClassification.NEUTRAL,
+            null);
+    analysisClient.nextFailure = new IOException("analysis service unavailable");
+
+    assertThrows(IOException.class, () -> dreamService.analyzeDream(dream.getId()));
+    DreamEntry reloaded = repository.findById(dream.getId());
+    AnalysisRun latestRun = dreamService.getLatestAnalysisRun(dream.getId());
+
+    assertEquals(AnalysisStatus.FAILED, reloaded.getAnalysisStatus());
+    assertEquals(AnalysisStatus.FAILED, latestRun.getStatus());
+    assertEquals("analysis service unavailable", latestRun.getFailureReason());
   }
 
   @Test

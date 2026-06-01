@@ -199,7 +199,7 @@ public class DreamService {
     } catch (IOException e) {
       runInTransaction(
           () -> {
-            dream.failAnalysis();
+            dream.failAnalysisPreservingPreviousSuccess();
             dreamRepository.updateAnalysisFields(dream);
             analysisRunRepository.markFailed(
                 run.getId(), System.currentTimeMillis(), failureReason(e));
