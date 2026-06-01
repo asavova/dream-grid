@@ -1,0 +1,10 @@
+.gradle/
+build/
+.idea/
+.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+data/
+*.db
+logs/
