@@ -1,10 +1,18 @@
 FROM python:3.12.4-slim-bookworm
 
+# Set working directory for the Python service
 WORKDIR /app
-COPY python/requirements.txt /app/python/requirements.txt
+
+# Copy the entire Python analysis service.  Copying the directory before
+# installing dependencies allows Docker caching to work effectively when
+# requirements change infrequently.
+COPY python /app/python
+
+# Install pinned dependencies.  The requirements file is part of the copied
+# context so we reference it directly.  --no-cache-dir reduces layer size.
 RUN pip install --no-cache-dir -r /app/python/requirements.txt
 
-COPY python /app/python
+# Set the working directory to the analysis service root
 WORKDIR /app/python
 
 ENV DREAMGRID_ANALYSIS_HOST=0.0.0.0
