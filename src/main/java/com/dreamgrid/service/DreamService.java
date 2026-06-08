@@ -167,7 +167,7 @@ public class DreamService {
     IDreamEntry dreamState = DreamSnapshot.from(dream);
     contentSafetyService.validateDreamContent(dreamState.getContent());
 
-    if (!forceReanalysis && hasValidCachedAnalysis(dreamState)) {
+    if (!forceReanalysis && dreamState.shouldUseCachedAnalysis(expectedAnalysisVersion)) {
       return dreamState.getAnalysisResult();
     }
 
@@ -375,7 +375,7 @@ public class DreamService {
     contentSafetyService.validateDreamContent(dreamState.getContent());
     contentSafetyService.validateQuestion(question);
 
-    if (!hasCompletedAnalysis(dreamState)) {
+    if (!dreamState.canAnswerQuestions()) {
       throw new DreamGridException(
           ApiErrorCode.VALIDATION_ERROR, "Dream must be analyzed before asking questions.");
     }
