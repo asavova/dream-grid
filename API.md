@@ -95,10 +95,10 @@ Removes the dream and cascades deletion to related `analysis_runs` and `dream_ta
 `GET /dreams` also supports filters:
 
 ```http
-GET /dreams?type=NEUTRAL&status=COMPLETED&tag=sky
+GET /dreams?query=ocean&type=NEUTRAL&status=COMPLETED&tag=sky
 ```
 
-Filters can be used individually or together.
+Filters can be used individually or together. `query` searches `title` and `content`; `q` is also accepted as a query alias.
 
 ## Search Dreams
 

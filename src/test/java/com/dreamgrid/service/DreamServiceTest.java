@@ -609,6 +609,36 @@ public class DreamServiceTest {
   }
 
   @Test
+  public void filtersCanCombineKeywordClassificationStatusAndTag() throws Exception {
+    DreamEntry match =
+        dreamService.saveDream(
+            "Ocean Door",
+            "The tide opened a door.",
+            "2026-05-31",
+            DreamClassification.LUCID,
+            List.of("water", "door"));
+    match.completeAnalysis("cached analysis", 100L, EXPECTED_ANALYSIS_VERSION);
+    repository.update(match);
+    dreamService.saveDream(
+        "Ocean Plain",
+        "The tide was quiet.",
+        "2026-05-31",
+        DreamClassification.NEUTRAL,
+        List.of("water"));
+    dreamService.saveDream(
+        "Lucid Desert",
+        "The sand opened a door.",
+        "2026-05-31",
+        DreamClassification.LUCID,
+        List.of("sand"));
+
+    List<DreamEntry> results = dreamService.filterDreams("ocean", "lucid", "completed", "water");
+
+    assertEquals(1, results.size());
+    assertEquals(match.getId(), results.get(0).getId());
+  }
+
+  @Test
   public void tagWithNoLinksReturnsEmptyResult() throws Exception {
     dreamService.saveDream(
         "Fire Dream",
