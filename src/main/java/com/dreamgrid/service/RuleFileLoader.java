@@ -21,6 +21,9 @@ class RuleFileLoader {
         if (!root.has(field)) {
           throw invalid("Rule file " + path + " is missing required field: " + field);
         }
+        if (!root.get(field).isJsonArray()) {
+          throw invalid("Rule file " + path + " field must be an array: " + field);
+        }
       }
       return root;
     } catch (IOException e) {
