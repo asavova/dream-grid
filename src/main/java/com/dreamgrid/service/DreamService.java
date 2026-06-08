@@ -230,7 +230,7 @@ public class DreamService {
     if (query == null || query.isBlank()) {
       return List.of();
     }
-    return dreamRepository.findByKeyword(query);
+    return dreamRepository.findByFilters(query, null, null, null);
   }
 
   public List<DreamEntry> getDreamsByTag(String tag) throws SQLException {
@@ -243,15 +243,25 @@ public class DreamService {
 
   public List<DreamEntry> filterDreams(String classificationValue, String status, String tag)
       throws SQLException {
+    return filterDreams(null, classificationValue, status, tag);
+  }
+
+  public List<DreamEntry> filterDreams(
+      String query, String classificationValue, String status, String tag) throws SQLException {
     DreamClassification classification = parseDreamClassification(classificationValue);
     AnalysisStatus analysisStatus = parseAnalysisStatus(status);
     String normalizedTag = tagNormalizationService.normalizeName(tag);
+    String normalizedQuery = query == null ? null : query.trim();
 
-    if (classification == null && analysisStatus == null && normalizedTag.isBlank()) {
+    if ((normalizedQuery == null || normalizedQuery.isBlank())
+        && classification == null
+        && analysisStatus == null
+        && normalizedTag.isBlank()) {
       return dreamRepository.getAll();
     }
 
-    return dreamRepository.findByFilters(null, classification, analysisStatus, normalizedTag);
+    return dreamRepository.findByFilters(
+        normalizedQuery, classification, analysisStatus, normalizedTag);
   }
 
   public DreamEntry getDreamById(int id) throws SQLException {

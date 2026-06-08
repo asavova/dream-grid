@@ -355,7 +355,7 @@ LIMIT ?
   }
 
   public List<DreamEntry> getAll() throws SQLException {
-    String sql = "SELECT * FROM dreams";
+    String sql = "SELECT * FROM dreams ORDER BY timestamp DESC, id DESC";
 
     try (PreparedStatement stmt = connection.prepareStatement(sql);
         ResultSet rs = stmt.executeQuery()) {

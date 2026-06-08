@@ -98,6 +98,35 @@ public class DreamApiHandlerTest {
   }
 
   @Test
+  public void listDreamsCombinesKeywordAndStructuredFilters() throws Exception {
+    dreamService.saveDream(
+        "Ocean Door",
+        "The tide opened a door.",
+        "2026-05-31",
+        DreamClassification.LUCID,
+        List.of("water"));
+    dreamService.saveDream(
+        "Ocean Plain",
+        "The tide was quiet.",
+        "2026-05-31",
+        DreamClassification.NEUTRAL,
+        List.of("water"));
+    dreamService.saveDream(
+        "Lucid Desert",
+        "The sand opened a door.",
+        "2026-05-31",
+        DreamClassification.LUCID,
+        List.of("sand"));
+
+    Response response = get("/dreams?query=ocean&type=LUCID&tag=water");
+    JsonArray body = JsonParser.parseString(response.body()).getAsJsonArray();
+
+    assertEquals(200, response.statusCode());
+    assertEquals(1, body.size());
+    assertEquals("Ocean Door", body.get(0).getAsJsonObject().get("title").getAsString());
+  }
+
+  @Test
   public void classificationEndpointReturnsUpdatedUserOverride() throws Exception {
     dreamService.saveDream(
         "Dream", "A quiet dream.", "2026-05-31", DreamClassification.UNKNOWN, List.of("quiet"));

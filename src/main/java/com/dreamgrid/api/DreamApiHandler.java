@@ -122,9 +122,11 @@ public class DreamApiHandler implements HttpHandler {
           queryParams.containsKey("classification")
               ? queryParams.get("classification")
               : queryParams.get("type");
+      String query =
+          queryParams.containsKey("query") ? queryParams.get("query") : queryParams.get("q");
       List<DreamEntry> dreams =
           dreamService.filterDreams(
-              classification, queryParams.get("status"), queryParams.get("tag"));
+              query, classification, queryParams.get("status"), queryParams.get("tag"));
       sendDreamList(exchange, dreams);
     } catch (IllegalArgumentException e) {
       sendError(exchange, 400, ApiErrorCode.VALIDATION_ERROR, e.getMessage());
