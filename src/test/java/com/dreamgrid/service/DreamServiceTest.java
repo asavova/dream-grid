@@ -313,6 +313,53 @@ public class DreamServiceTest {
   }
 
   @Test
+  public void editingContentClearsStaleInferredClassification() throws Exception {
+    DreamEntry dream =
+        dreamService.saveDream(
+            "Nightmare",
+            "I was chased through a dark hall.",
+            "2026-05-31",
+            (DreamClassification) null,
+            List.of("hall"));
+    analysisClient.nextResult = "{\"summary\":\"Nightmare signals.\",\"modelVersion\":\"v1\"}";
+    dreamService.analyzeDream(dream.getId());
+
+    DreamEntry updated =
+        dreamService.updateDream(
+            dream.getId(), "Quiet", "I floated on a calm lake.", "2026-05-31", null);
+
+    assertEquals(AnalysisStatus.STALE, updated.getAnalysisStatus());
+    assertEquals(null, updated.getInferredClassification());
+    assertEquals(DreamClassification.UNKNOWN, updated.getEffectiveClassification());
+    assertEquals(ClassificationSource.UNKNOWN, updated.getClassificationSource());
+    assertTrue(updated.getClassificationReason().contains("stale"));
+  }
+
+  @Test
+  public void editingContentPreservesUserClassificationWhileClearingOldInference()
+      throws Exception {
+    DreamEntry dream =
+        dreamService.saveDream(
+            "Override",
+            "I was trapped and chased.",
+            "2026-05-31",
+            DreamClassification.LUCID,
+            List.of("hall"));
+    analysisClient.nextResult = "{\"summary\":\"Nightmare signals.\",\"modelVersion\":\"v1\"}";
+    dreamService.reanalyzeDream(dream.getId());
+
+    DreamEntry updated =
+        dreamService.updateDream(
+            dream.getId(), "Override", "I floated on a calm lake.", "2026-05-31", null);
+
+    assertEquals(AnalysisStatus.STALE, updated.getAnalysisStatus());
+    assertEquals(null, updated.getInferredClassification());
+    assertEquals(DreamClassification.LUCID, updated.getEffectiveClassification());
+    assertEquals(ClassificationSource.USER, updated.getClassificationSource());
+    assertEquals(Double.valueOf(1.0), updated.getTypeConfidence());
+  }
+
+  @Test
   public void editingMetadataWithoutContentChangeKeepsCompletedSnapshot() throws Exception {
     DreamEntry dream =
         dreamService.saveDream(

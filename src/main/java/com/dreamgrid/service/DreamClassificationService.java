@@ -190,6 +190,23 @@ public class DreamClassificationService {
     return dreamRepository.findById(dreamId);
   }
 
+  public void markInferenceStaleAfterContentChange(DreamEntry dream) {
+    dream.setInferredClassification(null);
+    dream.setClassificationReason("Analysis inference is stale after content update.");
+    dream.setTypeConfidence(null);
+    dream.setClassificationUpdatedAt(System.currentTimeMillis());
+
+    if (dream.getUserClassification() != null) {
+      dream.setEffectiveClassification(dream.getUserClassification());
+      dream.setClassificationSource(ClassificationSource.USER);
+      dream.setTypeConfidence(1.0);
+      return;
+    }
+
+    dream.setEffectiveClassification(DreamClassification.UNKNOWN);
+    dream.setClassificationSource(ClassificationSource.UNKNOWN);
+  }
+
   private List<TypeRule> parseRules(JsonObject root) {
     List<TypeRule> parsed = new ArrayList<>();
     for (JsonElement element : root.getAsJsonArray("classifications")) {
