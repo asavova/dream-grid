@@ -294,10 +294,11 @@ public class DreamService {
           if (contentChanged) {
             existing.markAnalysisStale();
             dreamRepository.replaceAnalysisTags(dreamId, List.of());
+            classificationService.markInferenceStaleAfterContentChange(existing);
           }
 
           dreamRepository.update(existing);
-          if (updatedClassification != null) {
+          if (updatedClassification != null || contentChanged) {
             dreamRepository.updateClassificationFields(existing);
           }
         });
