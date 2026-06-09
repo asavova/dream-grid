@@ -26,7 +26,7 @@ Content-Type: application/json
   "title": "Mountain Climb",
   "content": "I was climbing a mountain under a clear sky",
   "date": "2026-05-31",
-  "type": "NEUTRAL",
+  "classification": "NEUTRAL",
   "tags": ["mountain", "clear sky"]
 }
 ```
@@ -38,15 +38,16 @@ Validation rules:
 - `title` must not be blank and must be at most 160 characters.
 - `content` must not be blank and must be at most 12,000 characters.
 - `date`, when provided, must use `yyyy-MM-dd` or `yyyy-MM-dd HH:mm:ss`.
-- `type`, when provided, must be one of `LUCID`, `NIGHTMARE`, `RECURRING`, `NEUTRAL`, or `UNKNOWN`.
+- `classification`, when provided, must be one of `LUCID`, `NIGHTMARE`, `RECURRING`, `NEUTRAL`, or `UNKNOWN`.
+- `type` is accepted as a legacy alias for `classification`.
 - `tags`, when provided, are trimmed, lowercased, deduplicated, and stored as manual tags.
 
 Type behavior:
 
-- If `type` is provided, it is stored as `userType` and becomes `effectiveType`.
-- If `type` is omitted, the dream starts with `effectiveType` set to `UNKNOWN`.
-- `typeSource` is `USER`, `ANALYSIS`, `PATTERN_ENGINE`, or `UNKNOWN`.
-- `inferredType` is populated during analysis/reanalysis when deterministic rules match.
+- If `classification` is provided, it is stored as `userClassification` and becomes `effectiveClassification`.
+- If `classification` is omitted, the dream starts with `effectiveClassification` set to `UNKNOWN`.
+- `classificationSource` is `USER`, `ANALYSIS`, `PATTERN_ENGINE`, or `UNKNOWN`.
+- `inferredClassification` is populated during analysis/reanalysis when deterministic rules match.
 
 ## Read Dreams
 
@@ -69,7 +70,7 @@ Content-Type: application/json
   "title": "Updated title",
   "content": "Updated content",
   "date": "2026-06-01",
-  "type": "NEUTRAL"
+  "classification": "NEUTRAL"
 }
 ```
 
@@ -77,7 +78,7 @@ All fields are optional in the request. Missing fields keep their current values
 
 Lifecycle behavior:
 
-- If only `title`, `date`, or `type` changes, the latest analysis snapshot is kept.
+- If only `title`, `date`, or `classification` changes, the latest analysis snapshot is kept.
 - If `content` changes, `analysisStatus` becomes `STALE`.
 - Stale dreams do not reuse cached analysis.
 - Existing analysis-generated tags are removed.
@@ -95,10 +96,10 @@ Removes the dream and cascades deletion to related `analysis_runs` and `dream_ta
 `GET /dreams` also supports filters:
 
 ```http
-GET /dreams?query=ocean&type=NEUTRAL&status=COMPLETED&tag=sky
+GET /dreams?query=ocean&classification=NEUTRAL&status=COMPLETED&tag=sky
 ```
 
-Filters can be used individually or together. `query` searches `title` and `content`; `q` is also accepted as a query alias.
+Filters can be used individually or together. `query` searches `title` and `content`; `q` is also accepted as a query alias. `type` is accepted as a legacy alias for `classification`.
 
 ## Search Dreams
 
@@ -275,10 +276,10 @@ DELETE /dreams/{id}/classification/override
 
 ```json
 {
-  "userType": null,
-  "inferredType": "NIGHTMARE",
-  "effectiveType": "NIGHTMARE",
-  "typeSource": "ANALYSIS",
+  "userClassification": null,
+  "inferredClassification": "NIGHTMARE",
+  "effectiveClassification": "NIGHTMARE",
+  "classificationSource": "ANALYSIS",
   "classificationReason": "Content indicates fear, threat, or panic signals.",
   "typeConfidence": 0.9,
   "classificationUpdatedAt": 1780250100000
