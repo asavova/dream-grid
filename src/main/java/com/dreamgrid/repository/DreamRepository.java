@@ -473,6 +473,7 @@ DO UPDATE SET confidence_score = excluded.confidence_score
     for (DreamTag tag : tags) {
       linkTagToDream(dreamId, tag, TagSource.ANALYSIS, tag.getConfidenceScore());
     }
+    deleteUnlinkedTags();
   }
 
   public List<DreamTag> listTagsForDream(int dreamId) throws SQLException {

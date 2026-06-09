@@ -737,6 +737,42 @@ public class DreamServiceTest {
   }
 
   @Test
+  public void reanalysisRemovesOrphanedAnalysisTagDefinitions() throws Exception {
+    DreamEntry dream =
+        dreamService.saveDream(
+            "Analysis", "A changing dream.", "2026-05-31", DreamClassification.NEUTRAL, null);
+    analysisClient.nextResult =
+        "{\"summary\":\"ok\",\"detectedSymbols\":[\"fire\"],\"modelVersion\":\"v1\"}";
+    dreamService.reanalyzeDream(dream.getId());
+
+    analysisClient.nextResult =
+        "{\"summary\":\"ok\",\"detectedSymbols\":[\"water\"],\"modelVersion\":\"v2\"}";
+    dreamService.reanalyzeDream(dream.getId());
+
+    assertEquals(null, repository.findTagByNormalizedName("fire"));
+    assertTrue(repository.findTagByNormalizedName("water") != null);
+  }
+
+  @Test
+  public void staleContentEditRemovesOrphanedAnalysisTagsButPreservesManualTags() throws Exception {
+    DreamEntry dream =
+        dreamService.saveDream(
+            "Analysis",
+            "A changing dream.",
+            "2026-05-31",
+            DreamClassification.NEUTRAL,
+            List.of("manual"));
+    analysisClient.nextResult =
+        "{\"summary\":\"ok\",\"detectedSymbols\":[\"fire\"],\"modelVersion\":\"v1\"}";
+    dreamService.reanalyzeDream(dream.getId());
+
+    dreamService.updateDream(dream.getId(), "Analysis", "Updated content.", "2026-05-31", null);
+
+    assertEquals(null, repository.findTagByNormalizedName("fire"));
+    assertTrue(repository.findTagByNormalizedName("manual") != null);
+  }
+
+  @Test
   public void deletingDreamRemovesTagLinksButKeepsTagDefinitions() throws Exception {
     DreamEntry first =
         dreamService.saveDream(
