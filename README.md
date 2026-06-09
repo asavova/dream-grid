@@ -1,77 +1,56 @@
 # DreamGrid
 
-DreamGrid is a personal dream journaling and analysis backend built with Java and Python.
+DreamGrid is a backend service for keeping a dream journal and tracking analysis over time. It provides a Java REST API with SQLite persistence and a separate Python analysis service that can run from local JSON rules.
 
-The project stores dream entries, tracks analysis history, extracts and manages dream tags, and provides tools for exploring recurring themes and patterns over time. It combines deterministic rule-based analysis with optional AI-assisted analysis providers.
-
-The goal of the project is to explore how dream data can be organized, classified, searched, and analyzed through a maintainable backend architecture.
+The application is backend-first. Web, mobile, or desktop clients interact with the Java API; the Java service handles storage, validation, tagging, classification, analysis history, and question history. The Python service is an internal analysis provider.
 
 ## Features
 
-- Dream storage and retrieval
-- Dream analysis and reanalysis workflows
-- Analysis history tracking
-- Dynamic tag management
-- Dream classification
-- Pattern and tag insights
-- Question and answer history
-- Content safety validation
-- Rule-based analysis engine
-- SQLite persistence
-- REST API
+- Create, update, search, filter, and delete dream entries.
+- Store every analysis attempt, including failed attempts.
+- Reuse cached analysis only when the configured analysis version still matches.
+- Mark analysis stale when dream content changes.
+- Keep manual tags separate from analysis-generated tags.
+- Normalize tags and calculate usage, recurrence, and co-occurrence insights.
+- Classify dreams from user overrides, text rules, and recurring tag patterns.
+- Store questions and answers against the completed analysis run used as context.
+- Reject unsupported content with configurable safety rules before analysis calls.
 
-## Architecture
+## Services
 
-The application is split into two components.
+### Java API
 
-### Java Backend
+The Java service owns the application state and exposes the REST API. Most behavior lives in the service layer, while SQL is kept in repositories.
 
-Responsible for:
+Important packages:
 
-- REST API endpoints
-- Business logic
-- Dream lifecycle management
-- Classification workflows
-- Persistence
-- Insight generation
+- `com.dreamgrid.api` - HTTP routing and JSON responses
+- `com.dreamgrid.service` - validation, lifecycle rules, analysis orchestration, classification, insights
+- `com.dreamgrid.repository` - SQLite queries and row mapping
+- `com.dreamgrid.database` - schema creation and migrations
+- `com.dreamgrid.model` - domain objects and lifecycle helpers
 
 ### Python Analysis Service
 
-Responsible for:
+The Python service exposes `/analyze` and `/ask`. The default backend is rule-based and reads from `python/rules/dream_interpretation_rules.json`, so local development does not require ML dependencies.
 
-- Rule-based dream analysis
-- Tag extraction
-- Theme detection
-- Content safety checks
-- Optional model-backed analysis
+The optional transformer backend is isolated behind the same service interface.
 
-The Java backend communicates with the Python service through `DreamAnalysisClient`.
+## Quick Start
 
-## Core Concepts
+Install Python dependencies:
 
-### Dream Entries
+```bash
+pip install -r requirements.txt -r python/requirements.txt
+```
 
-A dream entry represents a user-submitted dream and its associated metadata.
+Start the analysis service:
 
-### Analysis Runs
+```bash
+python python/analysis_api.py
+```
 
-Dreams may be analyzed multiple times. Analysis runs are stored separately to preserve historical results.
-
-### Tags
-
-Tags represent recurring symbols, themes, or concepts detected in dreams. Tags may be added manually or generated during analysis.
-
-### Classification
-
-Dreams may be classified into categories such as lucid, nightmare, recurring, or neutral. Classifications may be user-provided or inferred from analysis and historical patterns.
-
-### Insights
-
-The system can generate deterministic insights based on stored dream data, including recurring tags, tag frequency, and tag relationships.
-
-## Running the Project
-
-### Java Backend
+Start the Java API:
 
 ```bash
 ./gradlew run
@@ -83,26 +62,41 @@ Windows:
 .\gradlew.bat run
 ```
 
-### Python Service
+Defaults:
+
+- Java API: `http://localhost:8080`
+- Python analysis service: `http://127.0.0.1:5005`
+- SQLite database: `data/dreams.db`
+
+## Example API Use
+
+Create a dream:
 
 ```bash
-pip install -r python/requirements.txt
-python python/analysis_api.py
+curl -X POST http://localhost:8080/dreams \
+  -H "Content-Type: application/json" \
+  -d '{"title":"Ocean door","content":"I opened a door under the ocean.","date":"2026-06-09","classification":"UNKNOWN","tags":["ocean","door"]}'
 ```
 
-### Tests
+Analyze it:
 
 ```bash
-./gradlew test
+curl -X POST http://localhost:8080/dreams/1/analyze
 ```
 
-Windows:
+Ask a question about the stored analysis:
 
-```powershell
-.\gradlew.bat test
+```bash
+curl -X POST http://localhost:8080/dreams/1/questions \
+  -H "Content-Type: application/json" \
+  -d '{"question":"What does the ocean symbol suggest?"}'
 ```
 
-### Build
+See [API.md](API.md) for the full endpoint reference.
+
+## Tests
+
+Run the Java build and test suite:
 
 ```bash
 ./gradlew build
@@ -114,24 +108,68 @@ Windows:
 .\gradlew.bat build
 ```
 
-### Docker
+Run Python tests:
+
+```bash
+python -m unittest discover -s python/tests
+```
+
+## Docker
+
+The Dockerfile builds the project, installs Java and Python test dependencies, and runs both test suites during image build.
 
 ```bash
 docker build -t dreamgrid .
-docker compose up --build
 ```
 
-## Repository Structure
+Run the API container:
+
+```bash
+docker run --rm -p 8080:8080 dreamgrid
+```
+
+Run tests inside the image:
+
+```bash
+docker run --rm dreamgrid /bin/bash -lc "./gradlew --no-daemon test && python3 -m unittest discover -s python/tests"
+```
+
+## Configuration
+
+Environment variables:
+
+- `DREAMGRID_SERVER_HOST`
+- `DREAMGRID_SERVER_PORT`
+- `DREAMGRID_ANALYSIS_BASE_URL`
+- `DREAMGRID_DATABASE_PATH`
+- `DREAMGRID_ANALYSIS_VERSION`
+- `DREAMGRID_CONTENT_SAFETY_RULES_PATH`
+- `DREAMGRID_CLASSIFICATION_RULES_PATH`
+- `DREAMGRID_RECURRING_MIN_SHARED_TAGS`
+- `DREAMGRID_RECURRING_MIN_MATCHING_DREAMS`
+
+`DREAMGRID_ANALYSIS_VERSION` controls cache freshness. When it is set, a completed analysis is reused only if its stored version matches. Question answering follows the same freshness rule.
+
+## Data Model Notes
+
+Dreams have an analysis status: `PENDING`, `COMPLETED`, `FAILED`, or `STALE`.
+
+Analysis history is append-only. The latest successful result is copied onto the dream row for simple reads, but every real attempt is also stored in `analysis_runs`.
+
+Tags are source-aware. A tag can be linked manually, generated by analysis, or both. Reanalysis replaces only analysis-generated links.
+
+Classification keeps user-provided and inferred values separate. User overrides win until cleared; recurring classification comes from historical tag overlap, not from a text keyword alone.
+
+Question history is linked to the completed analysis run used when the answer was generated.
+
+## Project Layout
 
 ```text
-src/            Java application
-python/         Python analysis service
-gradle/         Gradle wrapper files
-build.gradle    Gradle build configuration
-API.md          API reference
-ARCHITECTURE.md Architecture notes
+src/              Java backend
+python/           Python analysis service
+python/rules/     Rule data for analysis, safety, and classification
+gradle/           Gradle wrapper files
+Dockerfile        Container build
+API.md            Endpoint reference
+ARCHITECTURE.md   Design notes
 ```
-
-## Project Status
-
-DreamGrid is an active personal project focused on backend architecture, analysis workflows, classification logic, and long-term dream pattern tracking.
