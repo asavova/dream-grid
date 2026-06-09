@@ -297,7 +297,9 @@ public class DreamApiHandler implements HttpHandler {
               request.getTitle(),
               request.getContent(),
               request.getDate(),
-              request.getType());
+              request.getClassification() != null
+                  ? request.getClassification()
+                  : request.getType());
       sendJsonResponse(exchange, 200, gson.toJson(toDreamResponse(updated)));
     } catch (JsonSyntaxException e) {
       sendError(exchange, 400, ApiErrorCode.VALIDATION_ERROR, "Invalid JSON request body");

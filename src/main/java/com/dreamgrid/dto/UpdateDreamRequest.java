@@ -5,6 +5,7 @@ public class UpdateDreamRequest {
   private String content;
   private String date;
   private String type;
+  private String classification;
 
   public String getTitle() {
     return title;
@@ -36,5 +37,13 @@ public class UpdateDreamRequest {
 
   public void setType(String type) {
     this.type = type;
+  }
+
+  public String getClassification() {
+    return classification;
+  }
+
+  public void setClassification(String classification) {
+    this.classification = classification;
   }
 }

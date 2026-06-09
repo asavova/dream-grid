@@ -142,6 +142,22 @@ public class DreamApiHandlerTest {
   }
 
   @Test
+  public void updateDreamAcceptsClassificationAlias() throws Exception {
+    dreamService.saveDream(
+        "Dream", "A quiet dream.", "2026-05-31", DreamClassification.UNKNOWN, List.of("quiet"));
+
+    Response response =
+        put(
+            "/dreams/1",
+            "{\"title\":\"Dream\",\"content\":\"A quiet dream.\",\"classification\":\"LUCID\"}");
+    JsonObject body = JsonParser.parseString(response.body()).getAsJsonObject();
+
+    assertEquals(200, response.statusCode());
+    assertEquals("LUCID", body.get("effectiveClassification").getAsString());
+    assertEquals("USER", body.get("classificationSource").getAsString());
+  }
+
+  @Test
   public void invalidClassificationReturnsStructuredValidationError() throws Exception {
     dreamService.saveDream(
         "Dream", "A quiet dream.", "2026-05-31", DreamClassification.UNKNOWN, List.of("quiet"));
