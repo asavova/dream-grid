@@ -160,7 +160,8 @@ public class DreamServiceTest {
             "2026-05-31",
             DreamClassification.NEUTRAL,
             null);
-    analysisClient.nextResult = "{\"summary\":\"first\",\"modelVersion\":\"v1\"}";
+    analysisClient.nextResult =
+        "{\"summary\":\"first\",\"modelVersion\":\"test-analysis-version\"}";
     dreamService.analyzeDream(dream.getId());
 
     analysisClient.nextResult = "{\"summary\":\"second\",\"modelVersion\":\"v2\"}";
@@ -171,7 +172,8 @@ public class DreamServiceTest {
     assertEquals(
         "{\"summary\":\"second\",\"modelVersion\":\"v2\"}", runs.get(0).getAnalysisResult());
     assertEquals(
-        "{\"summary\":\"first\",\"modelVersion\":\"v1\"}", runs.get(1).getAnalysisResult());
+        "{\"summary\":\"first\",\"modelVersion\":\"test-analysis-version\"}",
+        runs.get(1).getAnalysisResult());
   }
 
   @Test
@@ -200,7 +202,8 @@ public class DreamServiceTest {
             "2026-05-31",
             DreamClassification.NEUTRAL,
             null);
-    analysisClient.nextResult = "{\"summary\":\"A transition dream.\",\"modelVersion\":\"v1\"}";
+    analysisClient.nextResult =
+        "{\"summary\":\"A transition dream.\",\"modelVersion\":\"test-analysis-version\"}";
     dreamService.analyzeDream(dream.getId());
     analysisClient.nextFailure = new IOException("analysis service unavailable");
 
@@ -243,7 +246,8 @@ public class DreamServiceTest {
             "2026-05-31",
             DreamClassification.NEUTRAL,
             null);
-    analysisClient.nextResult = "{\"summary\":\"first\",\"modelVersion\":\"v1\"}";
+    analysisClient.nextResult =
+        "{\"summary\":\"first\",\"modelVersion\":\"test-analysis-version\"}";
     dreamService.analyzeDream(dream.getId());
     analysisClient.nextResult = "{\"summary\":\"second\",\"modelVersion\":\"v2\"}";
     dreamService.reanalyzeDream(dream.getId());
@@ -299,7 +303,8 @@ public class DreamServiceTest {
             "2026-05-31",
             DreamClassification.NEUTRAL,
             List.of("manual"));
-    analysisClient.nextResult = "{\"summary\":\"first\",\"modelVersion\":\"v1\"}";
+    analysisClient.nextResult =
+        "{\"summary\":\"first\",\"modelVersion\":\"test-analysis-version\"}";
     dreamService.analyzeDream(dream.getId());
     dreamService.updateDream(dream.getId(), "Edit", "Changed content", "2026-05-31", null);
     analysisClient.nextResult = "{\"summary\":\"second\",\"modelVersion\":\"v2\"}";
@@ -368,7 +373,8 @@ public class DreamServiceTest {
             "2026-05-31",
             DreamClassification.NEUTRAL,
             List.of("manual"));
-    analysisClient.nextResult = "{\"summary\":\"first\",\"modelVersion\":\"v1\"}";
+    analysisClient.nextResult =
+        "{\"summary\":\"first\",\"modelVersion\":\"test-analysis-version\"}";
     dreamService.analyzeDream(dream.getId());
 
     DreamEntry updated =
@@ -376,7 +382,9 @@ public class DreamServiceTest {
             dream.getId(), "Updated title", "Original content", "2026-06-01", null);
 
     assertEquals(AnalysisStatus.COMPLETED, updated.getAnalysisStatus());
-    assertEquals("{\"summary\":\"first\",\"modelVersion\":\"v1\"}", updated.getAnalysisResult());
+    assertEquals(
+        "{\"summary\":\"first\",\"modelVersion\":\"test-analysis-version\"}",
+        updated.getAnalysisResult());
   }
 
   @Test
@@ -388,7 +396,8 @@ public class DreamServiceTest {
             "2026-05-31",
             DreamClassification.NEUTRAL,
             List.of("manual"));
-    analysisClient.nextResult = "{\"summary\":\"first\",\"modelVersion\":\"v1\"}";
+    analysisClient.nextResult =
+        "{\"summary\":\"first\",\"modelVersion\":\"test-analysis-version\"}";
     dreamService.analyzeDream(dream.getId());
     dreamService.askQuestionAboutDream(dream.getId(), "What happened?");
 
@@ -421,7 +430,8 @@ public class DreamServiceTest {
             "2026-05-31",
             DreamClassification.NEUTRAL,
             null);
-    analysisClient.nextResult = "{\"summary\":\"A transition dream.\",\"modelVersion\":\"v1\"}";
+    analysisClient.nextResult =
+        "{\"summary\":\"A transition dream.\",\"modelVersion\":\"test-analysis-version\"}";
     dreamService.analyzeDream(dream.getId());
     analysisClient.nextAnswer = "The portal points to transition.";
 
@@ -439,7 +449,8 @@ public class DreamServiceTest {
     DreamEntry dream =
         dreamService.saveDream(
             "Dream", "I crossed a bright sky portal.", "2026-05-31", null, List.of("sky"));
-    analysisClient.nextResult = "{\"summary\":\"A transition dream.\",\"modelVersion\":\"v1\"}";
+    analysisClient.nextResult =
+        "{\"summary\":\"A transition dream.\",\"modelVersion\":\"test-analysis-version\"}";
     dreamService.analyzeDream(dream.getId());
     analysisClient.nextAnswer = "Stored answer";
 
@@ -457,7 +468,8 @@ public class DreamServiceTest {
     DreamEntry dream =
         dreamService.saveDream(
             "Dream", "I crossed a bright sky portal.", "2026-05-31", null, List.of("sky"));
-    analysisClient.nextResult = "{\"summary\":\"A transition dream.\",\"modelVersion\":\"v1\"}";
+    analysisClient.nextResult =
+        "{\"summary\":\"A transition dream.\",\"modelVersion\":\"test-analysis-version\"}";
     dreamService.analyzeDream(dream.getId());
     AnalysisRun latestRun = dreamService.getLatestAnalysisRun(dream.getId());
 
@@ -472,12 +484,14 @@ public class DreamServiceTest {
     DreamEntry dream =
         dreamService.saveDream(
             "Dream", "I crossed a bright sky portal.", "2026-05-31", null, List.of("sky"));
-    analysisClient.nextResult = "{\"summary\":\"A transition dream.\",\"modelVersion\":\"v1\"}";
+    analysisClient.nextResult =
+        "{\"summary\":\"A transition dream.\",\"modelVersion\":\"test-analysis-version\"}";
     dreamService.analyzeDream(dream.getId());
     dreamService.askQuestionAboutDream(dream.getId(), "First question?");
     int firstQuestionId = dreamService.getQuestionHistory(dream.getId()).get(0).getId();
 
-    analysisClient.nextResult = "{\"summary\":\"Updated analysis.\",\"modelVersion\":\"v2\"}";
+    analysisClient.nextResult =
+        "{\"summary\":\"Updated analysis.\",\"modelVersion\":\"test-analysis-version\"}";
     dreamService.reanalyzeDream(dream.getId());
     dreamService.askQuestionAboutDream(dream.getId(), "Second question?");
     List<DreamQuestion> history = dreamService.getQuestionHistory(dream.getId());
@@ -506,6 +520,39 @@ public class DreamServiceTest {
     assertEquals(ApiErrorCode.VALIDATION_ERROR, exception.getErrorCode());
     assertEquals("Dream must be analyzed before asking questions.", exception.getMessage());
     assertEquals(0, analysisClient.questionCalls);
+  }
+
+  @Test
+  public void questionWithStaleAnalysisVersionRequiresRefresh() throws Exception {
+    DreamEntry dream = completedDream("{\"summary\":\"Old analysis.\"}", 100L, "old-version");
+    repository.insert(dream);
+
+    DreamGridException exception =
+        assertThrows(
+            DreamGridException.class,
+            () -> dreamService.askQuestionAboutDream(dream.getId(), "What does it mean?"));
+
+    assertEquals(ApiErrorCode.VALIDATION_ERROR, exception.getErrorCode());
+    assertEquals(
+        "Dream analysis must be refreshed before asking questions.", exception.getMessage());
+    assertEquals(0, analysisClient.questionCalls);
+  }
+
+  @Test
+  public void questionAllowsAnyCompletedAnalysisWhenNoExpectedVersionConfigured() throws Exception {
+    DreamService versionlessService = new DreamService(repository, analysisClient, "");
+    DreamEntry dream =
+        versionlessService.saveDream(
+            "Dream", "I crossed a bright sky portal.", "2026-05-31", null, List.of("sky"));
+    analysisClient.nextResult =
+        "{\"summary\":\"Existing analysis.\",\"modelVersion\":\"old-version\"}";
+    versionlessService.analyzeDream(dream.getId());
+    analysisClient.nextAnswer = "Answer from existing analysis.";
+
+    String answer = versionlessService.askQuestionAboutDream(dream.getId(), "What does it mean?");
+
+    assertEquals("Answer from existing analysis.", answer);
+    assertEquals(1, analysisClient.questionCalls);
   }
 
   @Test

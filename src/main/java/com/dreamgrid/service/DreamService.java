@@ -391,6 +391,12 @@ public class DreamService {
           ApiErrorCode.VALIDATION_ERROR, "Dream must be analyzed before asking questions.");
     }
 
+    if (!dreamState.shouldUseCachedAnalysis(expectedAnalysisVersion)) {
+      throw new DreamGridException(
+          ApiErrorCode.VALIDATION_ERROR,
+          "Dream analysis must be refreshed before asking questions.");
+    }
+
     AnalysisRun completedRun = analysisRunRepository.findLatestCompletedByDreamId(dreamId);
     if (completedRun == null) {
       throw new DreamGridException(

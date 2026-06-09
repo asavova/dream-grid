@@ -252,6 +252,7 @@ Example response:
 ```
 
 This endpoint requires a completed analysis. If the dream is not analyzed yet, the API returns `400`.
+If `DREAMGRID_ANALYSIS_VERSION` is configured and the stored analysis version does not match, the API returns `400` until the dream is analyzed again.
 A question is persisted only after the answer is successfully generated.
 Each stored question is linked to the completed `analysis_runs` row used to answer.
 

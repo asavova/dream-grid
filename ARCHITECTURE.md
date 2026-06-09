@@ -128,7 +128,7 @@ Recurring pattern thresholds and Java rule-file paths are configuration-driven t
 
 ## Question Flow
 
-`POST /dreams/{id}/questions` requires a completed analysis. The Java service sends the dream text, stored analysis, and question to the Python service. The answer is persisted in `dream_questions` only after successful generation and linked to the completed `analysis_runs` row used for that answer.
+`POST /dreams/{id}/questions` requires a completed analysis that is fresh for the configured expected analysis version. The Java service sends the dream text, stored analysis, and question to the Python service. The answer is persisted in `dream_questions` only after successful generation and linked to the completed `analysis_runs` row used for that answer.
 
 ## Persistence
 

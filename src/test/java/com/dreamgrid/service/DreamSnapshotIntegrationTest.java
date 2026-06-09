@@ -57,7 +57,8 @@ public class DreamSnapshotIntegrationTest {
             "2026-06-01",
             DreamClassification.UNKNOWN,
             List.of("manual"));
-    analysisClient.nextResult = "{\"summary\":\"analysis for question\",\"modelVersion\":\"v1\"}";
+    analysisClient.nextResult =
+        "{\"summary\":\"analysis for question\",\"modelVersion\":\"test-version\"}";
     dreamService.analyzeDream(dream.getId());
     analysisClient.nextAnswer = "answer";
 
