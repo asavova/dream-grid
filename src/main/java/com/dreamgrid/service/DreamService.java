@@ -500,7 +500,8 @@ public class DreamService {
     }
 
     try {
-      return root.get("confidenceScore").getAsDouble();
+      double score = root.get("confidenceScore").getAsDouble();
+      return Double.isFinite(score) && score >= 0.0 && score <= 1.0 ? score : null;
     } catch (RuntimeException e) {
       return null;
     }

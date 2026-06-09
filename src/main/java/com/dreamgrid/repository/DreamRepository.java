@@ -569,12 +569,13 @@ FROM (
 
   private DreamTag mapDreamTag(ResultSet rs) throws SQLException {
     double confidenceScore = rs.getDouble("confidence_score");
+    Double nullableConfidenceScore = rs.wasNull() ? null : confidenceScore;
     return new DreamTag(
         rs.getInt("id"),
         rs.getString("name"),
         rs.getString("normalized_name"),
         TagSource.valueOf(rs.getString("source")),
-        rs.wasNull() ? null : confidenceScore,
+        nullableConfidenceScore,
         rs.getLong("created_at"));
   }
 

@@ -712,6 +712,42 @@ public class DreamServiceTest {
   }
 
   @Test
+  public void analysisTagConfidenceIsStoredWhenInRange() throws Exception {
+    DreamEntry dream =
+        dreamService.saveDream(
+            "Confidence",
+            "A mirror in the forest.",
+            "2026-05-31",
+            DreamClassification.NEUTRAL,
+            null);
+    analysisClient.nextResult =
+        "{\"summary\":\"ok\",\"detectedSymbols\":[\"mirror\"],\"confidenceScore\":0.75}";
+
+    dreamService.reanalyzeDream(dream.getId());
+    DreamEntry reloaded = repository.findById(dream.getId());
+
+    assertEquals(Double.valueOf(0.75), confidenceForTag(reloaded, "mirror"));
+  }
+
+  @Test
+  public void analysisTagConfidenceIsIgnoredWhenOutOfRange() throws Exception {
+    DreamEntry dream =
+        dreamService.saveDream(
+            "Confidence",
+            "A mirror in the forest.",
+            "2026-05-31",
+            DreamClassification.NEUTRAL,
+            null);
+    analysisClient.nextResult =
+        "{\"summary\":\"ok\",\"detectedSymbols\":[\"mirror\"],\"confidenceScore\":1.25}";
+
+    dreamService.reanalyzeDream(dream.getId());
+    DreamEntry reloaded = repository.findById(dream.getId());
+
+    assertEquals(null, confidenceForTag(reloaded, "mirror"));
+  }
+
+  @Test
   public void analysisGeneratedTagsAreReplacedAfterReanalysis() throws Exception {
     DreamEntry dream =
         dreamService.saveDream(
@@ -1156,6 +1192,15 @@ public class DreamServiceTest {
 
   private String analysisVersionOf(IDreamEntry dream) {
     return dream.getAnalysisVersion();
+  }
+
+  private Double confidenceForTag(DreamEntry dream, String normalizedName) {
+    for (DreamTag tag : dream.getSymbolTags()) {
+      if (normalizedName.equals(tag.getNormalizedName())) {
+        return tag.getConfidenceScore();
+      }
+    }
+    return null;
   }
 
   @Test
