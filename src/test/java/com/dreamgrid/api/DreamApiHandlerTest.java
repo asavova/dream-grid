@@ -1,6 +1,7 @@
 package com.dreamgrid.api;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 import com.dreamgrid.client.DreamAnalysisClient;
 import com.dreamgrid.model.DreamClassification;
@@ -64,6 +65,28 @@ public class DreamApiHandlerTest {
 
     assertEquals(404, response.statusCode());
     assertEquals("NOT_FOUND", body.get("error").getAsString());
+    assertEquals("*", response.header("Access-Control-Allow-Origin"));
+  }
+
+  @Test
+  public void optionsRequestReturnsCorsPreflightHeaders() throws Exception {
+    Response response = options("/dreams/1/analyze");
+
+    assertEquals(204, response.statusCode());
+    assertEquals("*", response.header("Access-Control-Allow-Origin"));
+    assertTrue(response.header("Access-Control-Allow-Methods").contains("POST"));
+    assertTrue(response.header("Access-Control-Allow-Methods").contains("OPTIONS"));
+    assertTrue(response.header("Access-Control-Allow-Headers").contains("Content-Type"));
+  }
+
+  @Test
+  public void successfulResponseIncludesCorsHeaders() throws Exception {
+    Response response = get("/health");
+    JsonObject body = JsonParser.parseString(response.body()).getAsJsonObject();
+
+    assertEquals(200, response.statusCode());
+    assertEquals("ok", body.get("status").getAsString());
+    assertEquals("*", response.header("Access-Control-Allow-Origin"));
   }
 
   @Test
@@ -219,7 +242,7 @@ public class DreamApiHandlerTest {
     InputStream stream =
         statusCode >= 400 ? connection.getErrorStream() : connection.getInputStream();
     String response = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
-    return new Response(statusCode, response);
+    return new Response(statusCode, response, connection.getHeaderFields());
   }
 
   private Response put(String path, String body) throws Exception {
@@ -234,7 +257,7 @@ public class DreamApiHandlerTest {
     InputStream stream =
         statusCode >= 400 ? connection.getErrorStream() : connection.getInputStream();
     String response = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
-    return new Response(statusCode, response);
+    return new Response(statusCode, response, connection.getHeaderFields());
   }
 
   private Response post(String path, String body) throws Exception {
@@ -251,7 +274,7 @@ public class DreamApiHandlerTest {
     InputStream stream =
         statusCode >= 400 ? connection.getErrorStream() : connection.getInputStream();
     String response = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
-    return new Response(statusCode, response);
+    return new Response(statusCode, response, connection.getHeaderFields());
   }
 
   private Response delete(String path) throws Exception {
@@ -263,10 +286,36 @@ public class DreamApiHandlerTest {
         statusCode >= 400 ? connection.getErrorStream() : connection.getInputStream();
     String response =
         stream == null ? "" : new String(stream.readAllBytes(), StandardCharsets.UTF_8);
-    return new Response(statusCode, response);
+    return new Response(statusCode, response, connection.getHeaderFields());
   }
 
-  private record Response(int statusCode, String body) {}
+  private Response options(String path) throws Exception {
+    HttpURLConnection connection = (HttpURLConnection) new URL(baseUrl + path).openConnection();
+    connection.setRequestMethod("OPTIONS");
+    connection.setRequestProperty("Origin", "http://localhost:3000");
+    connection.setRequestProperty("Access-Control-Request-Method", "POST");
+    connection.setRequestProperty("Access-Control-Request-Headers", "Content-Type");
+
+    int statusCode = connection.getResponseCode();
+    InputStream stream =
+        statusCode >= 400 ? connection.getErrorStream() : connection.getInputStream();
+    String response =
+        stream == null ? "" : new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+    return new Response(statusCode, response, connection.getHeaderFields());
+  }
+
+  private record Response(
+      int statusCode, String body, java.util.Map<String, List<String>> headers) {
+    String header(String name) {
+      for (java.util.Map.Entry<String, List<String>> entry : headers.entrySet()) {
+        if (entry.getKey() != null && entry.getKey().equalsIgnoreCase(name)) {
+          List<String> values = entry.getValue();
+          return values == null || values.isEmpty() ? null : values.get(0);
+        }
+      }
+      return null;
+    }
+  }
 
   private static class FakeAnalysisClient extends DreamAnalysisClient {
     private IOException nextFailure;

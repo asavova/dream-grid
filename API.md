@@ -2,6 +2,8 @@
 
 The Java backend runs on `http://localhost:8080`. Analysis endpoints require the Python service on `http://127.0.0.1:5005`.
 
+Browser clients can call the API from another local origin. Responses include CORS headers, and `OPTIONS` preflight requests return `204`.
+
 ## Health
 
 ```http

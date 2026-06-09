@@ -49,11 +49,14 @@ public class DreamApiHandler implements HttpHandler {
 
   @Override
   public void handle(HttpExchange exchange) throws IOException {
+    applyCorsHeaders(exchange);
     String path = exchange.getRequestURI().getPath();
     String method = exchange.getRequestMethod();
 
     try {
-      if ("/health".equals(path) && "GET".equals(method)) {
+      if ("OPTIONS".equals(method)) {
+        handleOptions(exchange);
+      } else if ("/health".equals(path) && "GET".equals(method)) {
         handleHealth(exchange);
       } else if ("/insights/tags".equals(path) && "GET".equals(method)) {
         handleTagInsights(exchange);
@@ -113,6 +116,11 @@ public class DreamApiHandler implements HttpHandler {
   private void handleHealth(HttpExchange exchange) throws IOException {
     String response = "{\"status\":\"ok\"}";
     sendJsonResponse(exchange, 200, response);
+  }
+
+  private void handleOptions(HttpExchange exchange) throws IOException {
+    exchange.sendResponseHeaders(204, -1);
+    exchange.close();
   }
 
   private void handleListDreams(HttpExchange exchange) throws IOException {
@@ -616,5 +624,16 @@ public class DreamApiHandler implements HttpHandler {
       case ANALYSIS_SERVICE_ERROR -> 502;
       case INTERNAL_ERROR -> 500;
     };
+  }
+
+  private void applyCorsHeaders(HttpExchange exchange) {
+    exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
+    exchange
+        .getResponseHeaders()
+        .set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    exchange
+        .getResponseHeaders()
+        .set("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    exchange.getResponseHeaders().set("Access-Control-Max-Age", "3600");
   }
 }
