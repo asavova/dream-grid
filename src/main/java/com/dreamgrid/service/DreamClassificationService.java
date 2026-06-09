@@ -14,6 +14,7 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Pattern;
 
 public class DreamClassificationService {
   private static final Path DEFAULT_RULE_PATH =
@@ -47,8 +48,7 @@ public class DreamClassificationService {
 
   public ClassificationResult inferFromDreamText(String title, String content) {
     String evidence =
-        ((title == null ? "" : title) + " " + (content == null ? "" : content))
-            .toLowerCase(Locale.ROOT);
+        normalizeEvidence((title == null ? "" : title) + " " + (content == null ? "" : content));
     long now = System.currentTimeMillis();
 
     TypeRule fallback = null;
@@ -242,11 +242,29 @@ public class DreamClassificationService {
 
   private boolean containsAny(String value, List<String> terms) {
     for (String term : terms) {
-      if (value.contains(term)) {
+      if (containsTerm(value, term)) {
         return true;
       }
     }
     return false;
+  }
+
+  private boolean containsTerm(String value, String term) {
+    String normalizedTerm = normalizeEvidence(term);
+    if (normalizedTerm.isBlank()) {
+      return false;
+    }
+    Pattern pattern =
+        Pattern.compile("(?<![\\p{Alnum}])" + Pattern.quote(normalizedTerm) + "(?![\\p{Alnum}])");
+    return pattern.matcher(value).find();
+  }
+
+  private String normalizeEvidence(String value) {
+    return value
+        .toLowerCase(Locale.ROOT)
+        .replaceAll("[^\\p{Alnum}\\s']", " ")
+        .replaceAll("\\s+", " ")
+        .trim();
   }
 
   private List<String> toStringList(JsonArray values) {

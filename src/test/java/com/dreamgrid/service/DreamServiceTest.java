@@ -800,6 +800,33 @@ public class DreamServiceTest {
   }
 
   @Test
+  public void classificationKeywordsDoNotMatchInsideLargerWords() throws Exception {
+    DreamEntry dream =
+        dreamService.saveDream(
+            "Fearless flight", "I felt fearless while flying.", "2026-05-31", null, null);
+    analysisClient.nextResult = "{\"summary\":\"Neutral signals.\",\"modelVersion\":\"v1\"}";
+
+    dreamService.analyzeDream(dream.getId());
+    DreamEntry reloaded = repository.findById(dream.getId());
+
+    assertEquals(DreamClassification.NEUTRAL, reloaded.getEffectiveClassification());
+    assertEquals(ClassificationSource.ANALYSIS, reloaded.getClassificationSource());
+  }
+
+  @Test
+  public void classificationKeywordsMatchAcrossPunctuationBoundaries() throws Exception {
+    DreamEntry dream =
+        dreamService.saveDream("Chase", "I was chased, then trapped!", "2026-05-31", null, null);
+    analysisClient.nextResult = "{\"summary\":\"Nightmare signals.\",\"modelVersion\":\"v1\"}";
+
+    dreamService.analyzeDream(dream.getId());
+    DreamEntry reloaded = repository.findById(dream.getId());
+
+    assertEquals(DreamClassification.NIGHTMARE, reloaded.getEffectiveClassification());
+    assertEquals(ClassificationSource.ANALYSIS, reloaded.getClassificationSource());
+  }
+
+  @Test
   public void recurringKeywordAloneDoesNotInferRecurringType() throws Exception {
     DreamEntry dream =
         dreamService.saveDream(
