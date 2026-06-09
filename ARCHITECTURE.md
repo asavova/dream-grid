@@ -120,7 +120,7 @@ Recurring pattern thresholds and Java rule-file paths are configuration-driven t
 6. On success, the run is marked `COMPLETED` and the latest analysis snapshot on the dream row is updated in the same local transaction.
 7. Analysis symbols and themes are stored as analysis-generated tags.
 8. Classification inference runs from deterministic rules over dream text and stored tags.
-9. If the Python call fails, the run is marked `FAILED`, the failure reason is stored, the dream status becomes `FAILED`, and the previous successful result is kept.
+9. If the Python call fails, the run is marked `FAILED` and the failure reason is stored. A first failed analysis marks the dream `FAILED`; a failed reanalysis preserves the previous successful `COMPLETED` snapshot.
 
 `POST /dreams/{id}/reanalyze` skips the cache and always calls the Python service.
 

@@ -188,7 +188,7 @@ Example response:
 }
 ```
 
-If analysis fails, the status is set to `FAILED`. A previous successful analysis is not deleted.
+If the first analysis fails, the dream status is set to `FAILED`. If reanalysis fails after a previous successful analysis, the latest successful dream snapshot remains `COMPLETED` and is not deleted.
 Each real analysis attempt is also stored in `analysis_runs`.
 
 ## Force Reanalysis
