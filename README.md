@@ -173,3 +173,5 @@ Dockerfile        Container build
 API.md            Endpoint reference
 ARCHITECTURE.md   Design notes
 ```
+
+## LICENSE: MIT
